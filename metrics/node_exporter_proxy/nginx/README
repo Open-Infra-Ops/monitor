@@ -1,0 +1,33 @@
+
+nginx作为node_exporter_proxy的使用方法：
+
+
+1. 安装nginx
+yum -y install httpd-tools nginx
+
+2. 设置nginx的认证密码
+cd /opt/
+htpasswd -c .ht.passwd password
+
+3. 配置nginx
+/etc/nginx/conf.d/prom.conf
+
+server {
+listen 9000;
+location / {
+    auth_basic "promauth";
+    auth_basic_user_file "/opt/.ht.passwd";
+    proxy_pass  http://localhost:9100/;
+   }
+}
+
+4. 配置prometheus
+
+
+
+4.补充：
+参考文章：https://blog.51cto.com/quietguoguo/4986217
+
+
+
+

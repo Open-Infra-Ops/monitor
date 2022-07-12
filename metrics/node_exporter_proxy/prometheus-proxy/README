@@ -1,0 +1,8 @@
+
+
+1. prometheus-proxy作为node_exporter_proxy的使用方法：
+node-exporter ----> prometheus-agent ------> prometheus-proxy----->prometheus
+
+prometheus-agent:
+wget https://raw.githubusercontent.com/pambrose/prometheus-proxy/master/examples/simple.conf
+docker run --rm -p 8083:8083 -p 8093:8093 --env AGENT_CONFIG='./simple.conf' pambrose/prometheus-agent:1.13.0

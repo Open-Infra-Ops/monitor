@@ -1,0 +1,17 @@
+一.将node_exporter的源码包打包成rpm包, 本源码在node_exporter 0.18.1的基础上进行适配
+1.编译环境准备
+安装rpmbuild, go(go的版本号必须大于1.4)
+
+
+2.修改node_exporter.service
+cd ./examples/systemd/
+vim node_exporter.service
+
+
+3.进行编译
+cd node_exporter
+sh -x make_rpm.sh
+
+
+
+

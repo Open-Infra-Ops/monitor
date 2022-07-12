@@ -6,7 +6,7 @@ After=network.target
 [Service]
 Type=simple
 User=node_exporter
-ExecStart=/usr/bin/node_exporter --web.listen-address=0.0.0.0:9100 --collector.cpu --collector.meminfo --collector.filesystem
+ExecStart=/usr/bin/node_exporter --web.listen-address=0.0.0.0:9100 --collector.netdev --collector.netdev.ignored-devices=^lo$ --collector.cpu --collector.meminfo --collector.filesystem
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 TimeoutStopSec=20s
