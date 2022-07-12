@@ -1,6 +1,4 @@
-
 nginx作为node_exporter_proxy的使用方法：
-
 
 1. 安装nginx
 yum -y install httpd-tools nginx
@@ -24,8 +22,10 @@ location / {
 4. 配置prometheus
 
 
+5. 本方案由于无法分发多个相同的路由，被淘汰。
 
-4.补充：
+
+6.补充：
 参考文章：https://blog.51cto.com/quietguoguo/4986217
 
 

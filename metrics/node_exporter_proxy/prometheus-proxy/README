@@ -1,11 +1,9 @@
-
-
 一. prometheus-proxy作为node_exporter_proxy的使用方法：
 node-exporter ----> prometheus-agent ------> prometheus-proxy----->prometheus
 
-
 二. 配置prometheus-agent:
-<1>打开metrics和admin功能
+<1>容器方式安装：
+1>打开metrics和admin功能
 metrics.enabled: true  提供prometheus-agent的metrics指标，这些都可以屏蔽，开放端口8083
 admin.enabled: true   提供管理者进行查询使用，这些都可以屏蔽，开放端口8093
 
@@ -16,16 +14,44 @@ agent {
   ************
 }
 
-2.docker run --rm -p 8083:8083 -p 8093:8093 --env AGENT_CONFIG='https://raw.githubusercontent.com/Open-Infra-Ops/monitor/main/metrics/node_exporter_proxy/prometheus-proxy/prometheus-proxy-agent.conf' pambrose/prometheus-agent:1.13.0
+2.执行命令
+docker run --rm -p 8083:8083 -p 8093:8093 --env AGENT_CONFIG='https://raw.githubusercontent.com/Open-Infra-Ops/monitor/main/metrics/node_exporter_proxy/prometheus-proxy/prometheus-proxy-agent.conf' pambrose/prometheus-agent:1.13.0
 
-<2>关闭metrics和admin功能
-1.docker run --rm --env AGENT_CONFIG='https://raw.githubusercontent.com/Open-Infra-Ops/monitor/main/metrics/node_exporter_proxy/prometheus-proxy/prometheus-proxy-agent.conf' pambrose/prometheus-agent:1.13.0
+2>关闭metrics和admin功能
+docker run -dit --name prometheus-agent --env AGENT_CONFIG='https://raw.githubusercontent.com/Open-Infra-Ops/monitor/main/metrics/node_exporter_proxy/prometheus-proxy/prometheus-proxy-agent.conf' pambrose/prometheus-agent:1.13.0
+
+<2>java包的方式
+java -jar prometheus-agent.jar -Dagent.proxy.hostname=1.14.102.183 --config https://raw.githubusercontent.com/Open-Infra-Ops/monitor/main/metrics/node_exporter_proxy/prometheus-proxy/prometheus-proxy-agent.conf
 
 
-3. 配置prometheus-proxy:
-docker run --rm -p 8082:8082 -p 8092:8092 -p 50051:50051 -p 8080:8080  --env ADMIN_ENABLED=true --env METRICS_ENABLED=true  pambrose/prometheus-proxy:1.13.0
+三. 配置prometheus-proxy:
+容器方式安装：
+docker run -dit --name prometheus-proxy -p 8082:8082 -p 8092:8092 -p 50051:50051 -p 8080:8080  --env ADMIN_ENABLED=true --env METRICS_ENABLED=true  pambrose/prometheus-proxy:1.13.0
+注意：ADMIN_ENABLED和METRICS_ENABLED参考上面的处理方法
+
+java的方式安装：
+java -jar prometheus-proxy.jar
+
 
 4.对接prometheus
+vim prometheus.yml
+
+global:
+  scrape_interval:     120s
+  evaluation_interval: 120s
+  scrape_timeout: 120s
+
+scrape_configs:
+  - job_name: node_exporter_node10
+    metrics_path: "/metrics_node10"
+    static_configs:
+      - targets: ['tomtoworld.xyz:8080']
+
+  - job_name: node_exporter_node11
+    metrics_path: "/metrics_node11"
+    static_configs:
+      - targets: ['tomtoworld.xyz:8080']
+
 
 
 
