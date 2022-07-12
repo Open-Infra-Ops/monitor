@@ -1,8 +1,33 @@
 
 
-1. prometheus-proxy作为node_exporter_proxy的使用方法：
+一. prometheus-proxy作为node_exporter_proxy的使用方法：
 node-exporter ----> prometheus-agent ------> prometheus-proxy----->prometheus
 
-prometheus-agent:
-wget https://raw.githubusercontent.com/pambrose/prometheus-proxy/master/examples/simple.conf
-docker run --rm -p 8083:8083 -p 8093:8093 --env AGENT_CONFIG='./simple.conf' pambrose/prometheus-agent:1.13.0
+
+二. 配置prometheus-agent:
+<1>打开metrics和admin功能
+metrics.enabled: true  提供prometheus-agent的metrics指标，这些都可以屏蔽，开放端口8083
+admin.enabled: true   提供管理者进行查询使用，这些都可以屏蔽，开放端口8093
+
+1.在prometheus-proxy-agent.conf配置：
+agent {
+  admin.enabled: true
+  metrics.enabled: true
+  ************
+}
+
+2.docker run --rm -p 8083:8083 -p 8093:8093 --env AGENT_CONFIG='https://raw.githubusercontent.com/Open-Infra-Ops/monitor/main/metrics/node_exporter_proxy/prometheus-proxy/prometheus-proxy-agent.conf' pambrose/prometheus-agent:1.13.0
+
+<2>关闭metrics和admin功能
+1.docker run --rm --env AGENT_CONFIG='https://raw.githubusercontent.com/Open-Infra-Ops/monitor/main/metrics/node_exporter_proxy/prometheus-proxy/prometheus-proxy-agent.conf' pambrose/prometheus-agent:1.13.0
+
+
+3. 配置prometheus-proxy:
+docker run --rm -p 8082:8082 -p 8092:8092 -p 50051:50051 -p 8080:8080  --env ADMIN_ENABLED=true --env METRICS_ENABLED=true  pambrose/prometheus-proxy:1.13.0
+
+4.对接prometheus
+
+
+
+
+
