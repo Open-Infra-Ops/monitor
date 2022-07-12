@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nonetdev
 // +build !nonetdev
 
 package collector
@@ -25,8 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/log"
 )
 
 var (
@@ -34,17 +32,28 @@ var (
 	procNetDevFieldSep    = regexp.MustCompile(` +`)
 )
 
-func getNetDevStats(filter *netDevFilter, logger log.Logger) (netDevStats, error) {
+func getNetDevStats(ignore *regexp.Regexp) (map[string]map[string]string, error) {
 	file, err := os.Open(procFilePath("net/dev"))
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	return parseNetDevStats(file, filter, logger)
+	return parseNetDevStats(file, ignore)
 }
 
-func parseNetDevStats(r io.Reader, filter *netDevFilter, logger log.Logger) (netDevStats, error) {
+func filterHeader(header string) bool {
+	headertypes := [5]string{"bytes", "packets"}
+
+	for _, t := range headertypes {
+		if t == header {
+			return true
+		}
+	}
+	return false
+}
+
+func parseNetDevStats(r io.Reader, ignore *regexp.Regexp) (map[string]map[string]string, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Scan() // skip first header
 	scanner.Scan()
@@ -58,45 +67,63 @@ func parseNetDevStats(r io.Reader, filter *netDevFilter, logger log.Logger) (net
 	transmitHeader := strings.Fields(parts[2])
 	headerLength := len(receiveHeader) + len(transmitHeader)
 
-	netDev := netDevStats{}
+	netDev := map[string]map[string]string{}
 	for scanner.Scan() {
 		line := strings.TrimLeft(scanner.Text(), " ")
 		parts := procNetDevInterfaceRE.FindStringSubmatch(line)
+
+
 		if len(parts) != 3 {
 			return nil, fmt.Errorf("couldn't get interface name, invalid line in net/dev: %q", line)
 		}
 
 		dev := parts[1]
-		if filter.ignored(dev) {
-			level.Debug(logger).Log("msg", "Ignoring device", "device", dev)
+		if ignore.MatchString(dev) {
+			log.Debugf("Ignoring device: %s", dev)
 			continue
 		}
-
 		values := procNetDevFieldSep.Split(strings.TrimLeft(parts[2], " "), -1)
 		if len(values) != headerLength {
 			return nil, fmt.Errorf("couldn't get values, invalid line in net/dev: %q", parts[2])
 		}
 
-		devStats := map[string]uint64{}
-		addStats := func(key, value string) {
-			v, err := strconv.ParseUint(value, 0, 64)
-			if err != nil {
-				level.Debug(logger).Log("msg", "invalid value in netstats", "key", key, "value", value, "err", err)
-				return
-			}
+		total_drop := 0
+		total_errs := 0
 
-			devStats[key] = v
-		}
-
+		netDev[dev] = map[string]string{}
 		for i := 0; i < len(receiveHeader); i++ {
-			addStats("receive_"+receiveHeader[i], values[i])
+			if filterHeader(receiveHeader[i]) {
+				netDev[dev]["receive_"+receiveHeader[i]] = values[i]
+			}
+			if receiveHeader[i] == "drop" {
+				drop,_ := strconv.Atoi(values[i])
+				total_drop += drop
+			}
+			if receiveHeader[i] == "errs" {
+				errs,_ := strconv.Atoi(values[i])
+				total_errs += errs
+			}
 		}
 
 		for i := 0; i < len(transmitHeader); i++ {
-			addStats("transmit_"+transmitHeader[i], values[i+len(receiveHeader)])
+			if filterHeader(transmitHeader[i]) {
+				netDev[dev]["transmit_"+transmitHeader[i]] = values[i+len(receiveHeader)]
+			}
+			if transmitHeader[i] == "drop" {
+				drop,_ := strconv.Atoi(values[i+len(receiveHeader)])
+				total_drop += drop
+			}
+			if transmitHeader[i] == "errs" {
+				errs,_ := strconv.Atoi(values[i+len(receiveHeader)])
+				total_errs += errs
+			}
+
+
 		}
 
-		netDev[dev] = devStats
+		netDev[dev]["drop"] = strconv.Itoa(total_drop)
+		netDev[dev]["errs"] = strconv.Itoa(total_errs)
+
 	}
 	return netDev, scanner.Err()
 }

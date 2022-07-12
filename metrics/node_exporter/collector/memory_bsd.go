@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build (freebsd || dragonfly) && !nomeminfo
 // +build freebsd dragonfly
 // +build !nomeminfo
 
@@ -20,7 +19,6 @@ package collector
 import (
 	"fmt"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sys/unix"
 )
@@ -33,7 +31,6 @@ type memoryCollector struct {
 	pageSize uint64
 	sysctls  []bsdSysctl
 	kvm      kvm
-	logger   log.Logger
 }
 
 func init() {
@@ -41,10 +38,10 @@ func init() {
 }
 
 // NewMemoryCollector returns a new Collector exposing memory stats.
-func NewMemoryCollector(logger log.Logger) (Collector, error) {
+func NewMemoryCollector() (Collector, error) {
 	tmp32, err := unix.SysctlUint32("vm.stats.vm.v_page_size")
 	if err != nil {
-		return nil, fmt.Errorf("sysctl(vm.stats.vm.v_page_size) failed: %w", err)
+		return nil, fmt.Errorf("sysctl(vm.stats.vm.v_page_size) failed: %s", err)
 	}
 	size := float64(tmp32)
 
@@ -60,7 +57,6 @@ func NewMemoryCollector(logger log.Logger) (Collector, error) {
 	}
 
 	return &memoryCollector{
-		logger:   logger,
 		pageSize: uint64(tmp32),
 		sysctls: []bsdSysctl{
 			// Descriptions via: https://wiki.freebsd.org/Memory
@@ -137,7 +133,7 @@ func (c *memoryCollector) Update(ch chan<- prometheus.Metric) error {
 	for _, m := range c.sysctls {
 		v, err := m.Value()
 		if err != nil {
-			return fmt.Errorf("couldn't get memory: %w", err)
+			return fmt.Errorf("couldn't get memory: %s", err)
 		}
 
 		// Most are gauges.
@@ -155,7 +151,7 @@ func (c *memoryCollector) Update(ch chan<- prometheus.Metric) error {
 
 	swapUsed, err := c.kvm.SwapUsedPages()
 	if err != nil {
-		return fmt.Errorf("couldn't get kvm: %w", err)
+		return fmt.Errorf("couldn't get kvm: %s", err)
 	}
 
 	ch <- prometheus.MustNewConstMetric(

@@ -11,65 +11,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nofilesystem && (linux || freebsd || openbsd || darwin || dragonfly)
 // +build !nofilesystem
-// +build linux freebsd openbsd darwin dragonfly
+// +build linux freebsd openbsd darwin,amd64 dragonfly
 
 package collector
 
 import (
-	"errors"
 	"regexp"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 // Arch-dependent implementation must define:
-// * defMountPointsExcluded
-// * defFSTypesExcluded
+// * defIgnoredMountPoints
+// * defIgnoredFSTypes
 // * filesystemLabelNames
 // * filesystemCollector.GetStats
 
 var (
-	mountPointsExcludeSet bool
-	mountPointsExclude    = kingpin.Flag(
-		"collector.filesystem.mount-points-exclude",
-		"Regexp of mount points to exclude for filesystem collector.",
-	).Default(defMountPointsExcluded).PreAction(func(c *kingpin.ParseContext) error {
-		mountPointsExcludeSet = true
-		return nil
-	}).String()
-	oldMountPointsExcluded = kingpin.Flag(
+	ignoredMountPoints = kingpin.Flag(
 		"collector.filesystem.ignored-mount-points",
 		"Regexp of mount points to ignore for filesystem collector.",
-	).Hidden().String()
-
-	fsTypesExcludeSet bool
-	fsTypesExclude    = kingpin.Flag(
-		"collector.filesystem.fs-types-exclude",
-		"Regexp of filesystem types to exclude for filesystem collector.",
-	).Default(defFSTypesExcluded).PreAction(func(c *kingpin.ParseContext) error {
-		fsTypesExcludeSet = true
-		return nil
-	}).String()
-	oldFSTypesExcluded = kingpin.Flag(
+	).Default(defIgnoredMountPoints).String()
+	ignoredFSTypes = kingpin.Flag(
 		"collector.filesystem.ignored-fs-types",
 		"Regexp of filesystem types to ignore for filesystem collector.",
-	).Hidden().String()
+	).Default(defIgnoredFSTypes).String()
 
 	filesystemLabelNames = []string{"device", "mountpoint", "fstype"}
 )
 
 type filesystemCollector struct {
-	excludedMountPointsPattern    *regexp.Regexp
-	excludedFSTypesPattern        *regexp.Regexp
+	ignoredMountPointsPattern     *regexp.Regexp
+	ignoredFSTypesPattern         *regexp.Regexp
 	sizeDesc, freeDesc, availDesc *prometheus.Desc
 	filesDesc, filesFreeDesc      *prometheus.Desc
 	roDesc, deviceErrorDesc       *prometheus.Desc
-	logger                        log.Logger
+	usePer                        *prometheus.Desc
 }
 
 type filesystemLabels struct {
@@ -88,30 +67,10 @@ func init() {
 }
 
 // NewFilesystemCollector returns a new Collector exposing filesystems stats.
-func NewFilesystemCollector(logger log.Logger) (Collector, error) {
-	if *oldMountPointsExcluded != "" {
-		if !mountPointsExcludeSet {
-			level.Warn(logger).Log("msg", "--collector.filesystem.ignored-mount-points is DEPRECATED and will be removed in 2.0.0, use --collector.filesystem.mount-points-exclude")
-			*mountPointsExclude = *oldMountPointsExcluded
-		} else {
-			return nil, errors.New("--collector.filesystem.ignored-mount-points and --collector.filesystem.mount-points-exclude are mutually exclusive")
-		}
-	}
-
-	if *oldFSTypesExcluded != "" {
-		if !fsTypesExcludeSet {
-			level.Warn(logger).Log("msg", "--collector.filesystem.ignored-fs-types is DEPRECATED and will be removed in 2.0.0, use --collector.filesystem.fs-types-exclude")
-			*fsTypesExclude = *oldFSTypesExcluded
-		} else {
-			return nil, errors.New("--collector.filesystem.ignored-fs-types and --collector.filesystem.fs-types-exclude are mutually exclusive")
-		}
-	}
-
+func NewFilesystemCollector() (Collector, error) {
 	subsystem := "filesystem"
-	level.Info(logger).Log("msg", "Parsed flag --collector.filesystem.mount-points-exclude", "flag", *mountPointsExclude)
-	mountPointPattern := regexp.MustCompile(*mountPointsExclude)
-	level.Info(logger).Log("msg", "Parsed flag --collector.filesystem.fs-types-exclude", "flag", *fsTypesExclude)
-	filesystemsTypesPattern := regexp.MustCompile(*fsTypesExclude)
+	mountPointPattern := regexp.MustCompile(*ignoredMountPoints)
+	filesystemsTypesPattern := regexp.MustCompile(*ignoredFSTypes)
 
 	sizeDesc := prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, subsystem, "size_bytes"),
@@ -155,17 +114,23 @@ func NewFilesystemCollector(logger log.Logger) (Collector, error) {
 		filesystemLabelNames, nil,
 	)
 
+	useDesc := prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, subsystem, "use_percent"),
+		"Filesystem use percent.",
+		filesystemLabelNames, nil,
+	)
+
 	return &filesystemCollector{
-		excludedMountPointsPattern: mountPointPattern,
-		excludedFSTypesPattern:     filesystemsTypesPattern,
-		sizeDesc:                   sizeDesc,
-		freeDesc:                   freeDesc,
-		availDesc:                  availDesc,
-		filesDesc:                  filesDesc,
-		filesFreeDesc:              filesFreeDesc,
-		roDesc:                     roDesc,
-		deviceErrorDesc:            deviceErrorDesc,
-		logger:                     logger,
+		ignoredMountPointsPattern: mountPointPattern,
+		ignoredFSTypesPattern:     filesystemsTypesPattern,
+		sizeDesc:                  sizeDesc,
+		freeDesc:                  freeDesc,
+		availDesc:                 availDesc,
+		filesDesc:                 filesDesc,
+		filesFreeDesc:             filesFreeDesc,
+		roDesc:                    roDesc,
+		deviceErrorDesc:           deviceErrorDesc,
+		usePer:                    useDesc,
 	}, nil
 }
 
@@ -182,10 +147,6 @@ func (c *filesystemCollector) Update(ch chan<- prometheus.Metric) error {
 		}
 		seen[s.labels] = true
 
-		ch <- prometheus.MustNewConstMetric(
-			c.deviceErrorDesc, prometheus.GaugeValue,
-			s.deviceError, s.labels.device, s.labels.mountPoint, s.labels.fsType,
-		)
 		if s.deviceError > 0 {
 			continue
 		}
@@ -198,22 +159,33 @@ func (c *filesystemCollector) Update(ch chan<- prometheus.Metric) error {
 			c.freeDesc, prometheus.GaugeValue,
 			s.free, s.labels.device, s.labels.mountPoint, s.labels.fsType,
 		)
+		if s.size < 0 {
+			continue
+		}
+		use_ratio := (s.size - s.free) / s.size
 		ch <- prometheus.MustNewConstMetric(
-			c.availDesc, prometheus.GaugeValue,
-			s.avail, s.labels.device, s.labels.mountPoint, s.labels.fsType,
-		)
-		ch <- prometheus.MustNewConstMetric(
-			c.filesDesc, prometheus.GaugeValue,
-			s.files, s.labels.device, s.labels.mountPoint, s.labels.fsType,
-		)
-		ch <- prometheus.MustNewConstMetric(
-			c.filesFreeDesc, prometheus.GaugeValue,
-			s.filesFree, s.labels.device, s.labels.mountPoint, s.labels.fsType,
-		)
-		ch <- prometheus.MustNewConstMetric(
-			c.roDesc, prometheus.GaugeValue,
-			s.ro, s.labels.device, s.labels.mountPoint, s.labels.fsType,
-		)
+			c.usePer, prometheus.GaugeValue,
+			use_ratio, s.labels.device, s.labels.mountPoint, s.labels.fsType)
+		//ch <- prometheus.MustNewConstMetric(
+		//	c.availDesc, prometheus.GaugeValue,
+		//	s.avail, s.labels.device, s.labels.mountPoint, s.labels.fsType,
+		//)
+		//ch <- prometheus.MustNewConstMetric(
+		//	c.filesDesc, prometheus.GaugeValue,
+		//	s.files, s.labels.device, s.labels.mountPoint, s.labels.fsType,
+		//)
+		//ch <- prometheus.MustNewConstMetric(
+		//	c.filesFreeDesc, prometheus.GaugeValue,
+		//	s.filesFree, s.labels.device, s.labels.mountPoint, s.labels.fsType,
+		//)
+		//ch <- prometheus.MustNewConstMetric(
+		//	c.roDesc, prometheus.GaugeValue,
+		//	s.ro, s.labels.device, s.labels.mountPoint, s.labels.fsType,
+		//)
+		//ch <- prometheus.MustNewConstMetric(
+		//	c.deviceErrorDesc, prometheus.GaugeValue,
+		//	s.deviceError, s.labels.device, s.labels.mountPoint, s.labels.fsType,
+		//)
 	}
 	return nil
 }

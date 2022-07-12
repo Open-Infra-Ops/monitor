@@ -11,17 +11,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nocpu
 // +build !nocpu
 
 package collector
 
 import (
 	"errors"
-	"strconv"
+	"fmt"
 	"unsafe"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -77,8 +75,7 @@ import "C"
 const maxCPUTimesLen = C.MAXCPU * C.CPUSTATES
 
 type statCollector struct {
-	cpu    *prometheus.Desc
-	logger log.Logger
+	cpu *prometheus.Desc
 }
 
 func init() {
@@ -86,15 +83,14 @@ func init() {
 }
 
 // NewStatCollector returns a new Collector exposing CPU stats.
-func NewStatCollector(logger log.Logger) (Collector, error) {
+func NewStatCollector() (Collector, error) {
 	return &statCollector{
-		cpu:    nodeCPUSecondsDesc,
-		logger: logger,
+		cpu: nodeCPUSecondsDesc,
 	}, nil
 }
 
 func getDragonFlyCPUTimes() ([]float64, error) {
-	// We want time spent per-CPU per CPUSTATE.
+	// We want time spent per-cpu per CPUSTATE.
 	// CPUSTATES (number of CPUSTATES) is defined as 5U.
 	// States: CP_USER | CP_NICE | CP_SYS | CP_IDLE | CP_INTR
 	//
@@ -132,7 +128,7 @@ func (c *statCollector) Update(ch chan<- prometheus.Metric) error {
 	// Export order: user nice sys intr idle
 	cpuFields := []string{"user", "nice", "sys", "interrupt", "idle"}
 	for i, value := range cpuTimes {
-		cpux := strconv.Itoa(i / fieldsCount)
+		cpux := fmt.Sprintf("%d", i/fieldsCount)
 		ch <- prometheus.MustNewConstMetric(c.cpu, prometheus.CounterValue, value, cpux, cpuFields[i%fieldsCount])
 	}
 

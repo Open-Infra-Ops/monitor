@@ -14,7 +14,6 @@
 // Based on gopsutil/cpu/cpu_darwin_cgo.go @ ae251eb which is licensed under
 // BSD. See https://github.com/shirou/gopsutil/blob/master/LICENSE for details.
 
-//go:build !nocpu
 // +build !nocpu
 
 package collector
@@ -26,7 +25,6 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -39,7 +37,6 @@ import (
 #include <mach/mach_init.h>
 #include <mach/mach_host.h>
 #include <mach/host_info.h>
-#include <TargetConditionals.h>
 #if TARGET_OS_MAC
 #include <libproc.h>
 #endif
@@ -52,8 +49,7 @@ import "C"
 const ClocksPerSec = float64(C.CLK_TCK)
 
 type statCollector struct {
-	cpu    *prometheus.Desc
-	logger log.Logger
+	cpu *prometheus.Desc
 }
 
 func init() {
@@ -61,10 +57,9 @@ func init() {
 }
 
 // NewCPUCollector returns a new Collector exposing CPU stats.
-func NewCPUCollector(logger log.Logger) (Collector, error) {
+func NewCPUCollector() (Collector, error) {
 	return &statCollector{
-		cpu:    nodeCPUSecondsDesc,
-		logger: logger,
+		cpu: nodeCPUSecondsDesc,
 	}, nil
 }
 

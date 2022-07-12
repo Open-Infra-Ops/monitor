@@ -11,8 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build openbsd && !amd64 && !nocpu
-// +build openbsd,!amd64,!nocpu
+// +build !nocpu
 
 package collector
 
@@ -20,7 +19,6 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sys/unix"
 )
@@ -32,18 +30,16 @@ import (
 import "C"
 
 type cpuCollector struct {
-	cpu    typedDesc
-	logger log.Logger
+	cpu typedDesc
 }
 
 func init() {
 	registerCollector("cpu", defaultEnabled, NewCPUCollector)
 }
 
-func NewCPUCollector(logger log.Logger) (Collector, error) {
+func NewCPUCollector() (Collector, error) {
 	return &cpuCollector{
-		cpu:    typedDesc{nodeCPUSecondsDesc, prometheus.CounterValue},
-		logger: logger,
+		cpu: typedDesc{nodeCPUSecondsDesc, prometheus.CounterValue},
 	}, nil
 }
 

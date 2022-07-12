@@ -20,12 +20,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/promlog"
-	"github.com/prometheus/common/promlog/flag"
-	"gopkg.in/alecthomas/kingpin.v2"
+	"github.com/prometheus/common/log"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 type collectorAdapter struct {
@@ -41,7 +39,8 @@ func (a collectorAdapter) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect implements the prometheus.Collector interface.
 func (a collectorAdapter) Collect(ch chan<- prometheus.Metric) {
-	if err := a.Update(ch); err != nil {
+	err := a.Update(ch)
+	if err != nil {
 		panic(fmt.Sprintf("failed to update collector: %v", err))
 	}
 }
@@ -91,25 +90,20 @@ func TestTextfileCollector(t *testing.T) {
 			path: "fixtures/textfile/summary_extra_dimension",
 			out:  "fixtures/textfile/summary_extra_dimension.out",
 		},
-		{
-			path: "fixtures/textfile/*_extra_dimension",
-			out:  "fixtures/textfile/glob_extra_dimension.out",
-		},
 	}
 
 	for i, test := range tests {
 		mtime := 1.0
 		c := &textFileCollector{
-			path:   test.path,
-			mtime:  &mtime,
-			logger: log.NewNopLogger(),
+			path:  test.path,
+			mtime: &mtime,
 		}
 
 		// Suppress a log message about `nonexistent_path` not existing, this is
 		// expected and clutters the test output.
-		promlogConfig := &promlog.Config{}
-		flag.AddFlags(kingpin.CommandLine, promlogConfig)
-		if _, err := kingpin.CommandLine.Parse([]string{"--log.level", "debug"}); err != nil {
+		log.AddFlags(kingpin.CommandLine)
+		_, err := kingpin.CommandLine.Parse([]string{"--log.level", "fatal"})
+		if err != nil {
 			t.Fatal(err)
 		}
 

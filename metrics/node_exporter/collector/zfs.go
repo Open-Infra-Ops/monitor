@@ -11,8 +11,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build linux && !nozfs
-// +build linux,!nozfs
+// +build linux
+// +build !nozfs
 
 package collector
 
@@ -20,9 +20,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 )
 
 var errZFSNotAvailable = errors.New("ZFS / ZFS statistics are not available")
@@ -34,21 +33,16 @@ func init() {
 }
 
 type zfsCollector struct {
-	linuxProcpathBase    string
-	linuxZpoolIoPath     string
-	linuxZpoolObjsetPath string
-	linuxZpoolStatePath  string
-	linuxPathMap         map[string]string
-	logger               log.Logger
+	linuxProcpathBase string
+	linuxZpoolIoPath  string
+	linuxPathMap      map[string]string
 }
 
 // NewZFSCollector returns a new Collector exposing ZFS statistics.
-func NewZFSCollector(logger log.Logger) (Collector, error) {
+func NewZFSCollector() (Collector, error) {
 	return &zfsCollector{
-		linuxProcpathBase:    "spl/kstat/zfs",
-		linuxZpoolIoPath:     "/*/io",
-		linuxZpoolObjsetPath: "/*/objset-*",
-		linuxZpoolStatePath:  "/*/state",
+		linuxProcpathBase: "spl/kstat/zfs",
+		linuxZpoolIoPath:  "/*/io",
 		linuxPathMap: map[string]string{
 			"zfs_abd":         "abdstats",
 			"zfs_arc":         "arcstats",
@@ -62,23 +56,14 @@ func NewZFSCollector(logger log.Logger) (Collector, error) {
 			"zfs_zfetch":      "zfetchstats",
 			"zfs_zil":         "zil",
 		},
-		logger: logger,
 	}, nil
 }
 
 func (c *zfsCollector) Update(ch chan<- prometheus.Metric) error {
-
-	if _, err := c.openProcFile(c.linuxProcpathBase); err != nil {
-		if err == errZFSNotAvailable {
-			level.Debug(c.logger).Log("err", err)
-			return ErrNoData
-		}
-	}
-
 	for subsystem := range c.linuxPathMap {
 		if err := c.updateZfsStats(subsystem, ch); err != nil {
 			if err == errZFSNotAvailable {
-				level.Debug(c.logger).Log("err", err)
+				log.Debug(err)
 				// ZFS /proc files are added as new features to ZFS arrive, it is ok to continue
 				continue
 			}
@@ -123,37 +108,5 @@ func (c *zfsCollector) constPoolMetric(poolName string, sysctl zfsSysctl, value 
 		prometheus.UntypedValue,
 		float64(value),
 		poolName,
-	)
-}
-
-func (c *zfsCollector) constPoolObjsetMetric(poolName string, datasetName string, sysctl zfsSysctl, value uint64) prometheus.Metric {
-	metricName := sysctl.metricName()
-
-	return prometheus.MustNewConstMetric(
-		prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "zfs_zpool_dataset", metricName),
-			string(sysctl),
-			[]string{"zpool", "dataset"},
-			nil,
-		),
-		prometheus.UntypedValue,
-		float64(value),
-		poolName,
-		datasetName,
-	)
-}
-
-func (c *zfsCollector) constPoolStateMetric(poolName string, stateName string, isActive uint64) prometheus.Metric {
-	return prometheus.MustNewConstMetric(
-		prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "zfs_zpool", "state"),
-			"kstat.zfs.misc.state",
-			[]string{"zpool", "state"},
-			nil,
-		),
-		prometheus.GaugeValue,
-		float64(isActive),
-		poolName,
-		stateName,
 	)
 }

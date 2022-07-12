@@ -11,14 +11,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nomeminfo
 // +build !nomeminfo
 
 package collector
 
 // #include <mach/mach_host.h>
-// #include <sys/sysctl.h>
-// typedef struct xsw_usage xsw_usage_t;
 import "C"
 
 import (
@@ -46,13 +43,6 @@ func (c *meminfoCollector) getMemInfo() (map[string]float64, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	swapraw, err := unix.SysctlRaw("vm.swapusage")
-	if err != nil {
-		return nil, err
-	}
-	swap := (*C.xsw_usage_t)(unsafe.Pointer(&swapraw[0]))
-
 	// Syscall removes terminating NUL which we need to cast to uint64
 	total := binary.LittleEndian.Uint64([]byte(totalb + "\x00"))
 
@@ -69,7 +59,5 @@ func (c *meminfoCollector) getMemInfo() (map[string]float64, error) {
 		"swapped_in_bytes_total":  ps * float64(vmstat.pageins),
 		"swapped_out_bytes_total": ps * float64(vmstat.pageouts),
 		"total_bytes":             float64(total),
-		"swap_used_bytes":         float64(swap.xsu_used),
-		"swap_total_bytes":        float64(swap.xsu_total),
 	}, nil
 }

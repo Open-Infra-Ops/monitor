@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nodiskstats
 // +build !nodiskstats
 
 package collector
@@ -19,7 +18,6 @@ package collector
 import (
 	"fmt"
 
-	"github.com/go-kit/log"
 	"github.com/lufia/iostat"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -30,8 +28,7 @@ type typedDescFunc struct {
 }
 
 type diskstatsCollector struct {
-	descs  []typedDescFunc
-	logger log.Logger
+	descs []typedDescFunc
 }
 
 func init() {
@@ -39,7 +36,7 @@ func init() {
 }
 
 // NewDiskstatsCollector returns a new Collector exposing disk device stats.
-func NewDiskstatsCollector(logger log.Logger) (Collector, error) {
+func NewDiskstatsCollector() (Collector, error) {
 	var diskLabelNames = []string{"device"}
 
 	return &diskstatsCollector{
@@ -126,71 +123,14 @@ func NewDiskstatsCollector(logger log.Logger) (Collector, error) {
 					return float64(stat.BytesWritten)
 				},
 			},
-			{
-				typedDesc: typedDesc{
-					desc: prometheus.NewDesc(
-						prometheus.BuildFQName(namespace, diskSubsystem, "read_errors_total"),
-						"The total number of read errors.",
-						diskLabelNames,
-						nil,
-					),
-					valueType: prometheus.CounterValue,
-				},
-				value: func(stat *iostat.DriveStats) float64 {
-					return float64(stat.ReadErrors)
-				},
-			},
-			{
-				typedDesc: typedDesc{
-					desc: prometheus.NewDesc(
-						prometheus.BuildFQName(namespace, diskSubsystem, "write_errors_total"),
-						"The total number of write errors.",
-						diskLabelNames,
-						nil,
-					),
-					valueType: prometheus.CounterValue,
-				},
-				value: func(stat *iostat.DriveStats) float64 {
-					return float64(stat.WriteErrors)
-				},
-			},
-			{
-				typedDesc: typedDesc{
-					desc: prometheus.NewDesc(
-						prometheus.BuildFQName(namespace, diskSubsystem, "read_retries_total"),
-						"The total number of read retries.",
-						diskLabelNames,
-						nil,
-					),
-					valueType: prometheus.CounterValue,
-				},
-				value: func(stat *iostat.DriveStats) float64 {
-					return float64(stat.ReadRetries)
-				},
-			},
-			{
-				typedDesc: typedDesc{
-					desc: prometheus.NewDesc(
-						prometheus.BuildFQName(namespace, diskSubsystem, "write_retries_total"),
-						"The total number of write retries.",
-						diskLabelNames,
-						nil,
-					),
-					valueType: prometheus.CounterValue,
-				},
-				value: func(stat *iostat.DriveStats) float64 {
-					return float64(stat.WriteRetries)
-				},
-			},
 		},
-		logger: logger,
 	}, nil
 }
 
 func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 	diskStats, err := iostat.ReadDriveStats()
 	if err != nil {
-		return fmt.Errorf("couldn't get diskstats: %w", err)
+		return fmt.Errorf("couldn't get diskstats: %s", err)
 	}
 
 	for _, stats := range diskStats {

@@ -11,35 +11,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build solaris && !nocpu
-// +build solaris,!nocpu
+// +build solaris
+// +build !nocpu
 
 package collector
 
 import (
 	"strconv"
 
-	"github.com/go-kit/log"
-	"github.com/illumos/go-kstat"
 	"github.com/prometheus/client_golang/prometheus"
+	kstat "github.com/siebenmann/go-kstat"
 )
 
 // #include <unistd.h>
 import "C"
 
 type cpuCollector struct {
-	cpu    typedDesc
-	logger log.Logger
+	cpu typedDesc
 }
 
 func init() {
 	registerCollector("cpu", defaultEnabled, NewCpuCollector)
 }
 
-func NewCpuCollector(logger log.Logger) (Collector, error) {
+func NewCpuCollector() (Collector, error) {
 	return &cpuCollector{
-		cpu:    typedDesc{nodeCPUSecondsDesc, prometheus.CounterValue},
-		logger: logger,
+		cpu: typedDesc{nodeCPUSecondsDesc, prometheus.CounterValue},
 	}, nil
 }
 

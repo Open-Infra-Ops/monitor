@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nodevstat
 // +build !nodevstat
 
 package collector
@@ -20,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -98,7 +96,6 @@ type devstatCollector struct {
 	bytesDesc     *prometheus.Desc
 	transfersDesc *prometheus.Desc
 	blocksDesc    *prometheus.Desc
-	logger        log.Logger
 }
 
 func init() {
@@ -106,7 +103,7 @@ func init() {
 }
 
 // NewDevstatCollector returns a new Collector exposing Device stats.
-func NewDevstatCollector(logger log.Logger) (Collector, error) {
+func NewDevstatCollector() (Collector, error) {
 	return &devstatCollector{
 		bytesDesc: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, devstatSubsystem, "bytes_total"),
@@ -123,7 +120,6 @@ func NewDevstatCollector(logger log.Logger) (Collector, error) {
 			"The total number of bytes given in terms of the devices blocksize.",
 			[]string{"device"}, nil,
 		),
-		logger: logger,
 	}, nil
 }
 

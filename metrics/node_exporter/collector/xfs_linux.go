@@ -11,23 +11,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !noxfs
-// +build !noxfs
-
 package collector
 
 import (
 	"fmt"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/procfs/xfs"
 )
 
 // An xfsCollector is a Collector which gathers metrics from XFS filesystems.
 type xfsCollector struct {
-	fs     xfs.FS
-	logger log.Logger
+	fs xfs.FS
 }
 
 func init() {
@@ -35,15 +30,14 @@ func init() {
 }
 
 // NewXFSCollector returns a new Collector exposing XFS statistics.
-func NewXFSCollector(logger log.Logger) (Collector, error) {
+func NewXFSCollector() (Collector, error) {
 	fs, err := xfs.NewFS(*procPath, *sysPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open sysfs: %w", err)
+		return nil, fmt.Errorf("failed to open sysfs: %v", err)
 	}
 
 	return &xfsCollector{
-		fs:     fs,
-		logger: logger,
+		fs: fs,
 	}, nil
 }
 
@@ -51,7 +45,7 @@ func NewXFSCollector(logger log.Logger) (Collector, error) {
 func (c *xfsCollector) Update(ch chan<- prometheus.Metric) error {
 	stats, err := c.fs.SysStats()
 	if err != nil {
-		return fmt.Errorf("failed to retrieve XFS stats: %w", err)
+		return fmt.Errorf("failed to retrieve XFS stats: %v", err)
 	}
 
 	for _, s := range stats {
@@ -179,106 +173,6 @@ func (c *xfsCollector) updateXFSStats(ch chan<- prometheus.Metric, s *xfs.Stats)
 			name:  "block_map_btree_records_deleted_total",
 			desc:  "Number of block map B-tree records deleted for a filesystem.",
 			value: float64(s.BlockMapBTree.RecordsDeleted),
-		},
-		{
-			name:  "directory_operation_lookup_total",
-			desc:  "Number of file name directory lookups which miss the operating systems directory name lookup cache.",
-			value: float64(s.DirectoryOperation.Lookups),
-		},
-		{
-			name:  "directory_operation_create_total",
-			desc:  "Number of times a new directory entry was created for a filesystem.",
-			value: float64(s.DirectoryOperation.Creates),
-		},
-		{
-			name:  "directory_operation_remove_total",
-			desc:  "Number of times an existing directory entry was created for a filesystem.",
-			value: float64(s.DirectoryOperation.Removes),
-		},
-		{
-			name:  "directory_operation_getdents_total",
-			desc:  "Number of times the directory getdents operation was performed for a filesystem.",
-			value: float64(s.DirectoryOperation.Getdents),
-		},
-		{
-			name:  "inode_operation_attempts_total",
-			desc:  "Number of times the OS looked for an XFS inode in the inode cache.",
-			value: float64(s.InodeOperation.Attempts),
-		},
-		{
-			name:  "inode_operation_found_total",
-			desc:  "Number of times the OS looked for and found an XFS inode in the inode cache.",
-			value: float64(s.InodeOperation.Found),
-		},
-		{
-			name:  "inode_operation_recycled_total",
-			desc:  "Number of times the OS found an XFS inode in the cache, but could not use it as it was being recycled.",
-			value: float64(s.InodeOperation.Recycle),
-		},
-		{
-			name:  "inode_operation_missed_total",
-			desc:  "Number of times the OS looked for an XFS inode in the cache, but did not find it.",
-			value: float64(s.InodeOperation.Missed),
-		},
-		{
-			name:  "inode_operation_duplicates_total",
-			desc:  "Number of times the OS tried to add a missing XFS inode to the inode cache, but found it had already been added by another process.",
-			value: float64(s.InodeOperation.Duplicate),
-		},
-		{
-			name:  "inode_operation_reclaims_total",
-			desc:  "Number of times the OS reclaimed an XFS inode from the inode cache to free memory for another purpose.",
-			value: float64(s.InodeOperation.Reclaims),
-		},
-		{
-			name:  "inode_operation_attribute_changes_total",
-			desc:  "Number of times the OS explicitly changed the attributes of an XFS inode.",
-			value: float64(s.InodeOperation.AttributeChange),
-		},
-		{
-			name:  "read_calls_total",
-			desc:  "Number of read(2) system calls made to files in a filesystem.",
-			value: float64(s.ReadWrite.Read),
-		},
-		{
-			name:  "write_calls_total",
-			desc:  "Number of write(2) system calls made to files in a filesystem.",
-			value: float64(s.ReadWrite.Write),
-		},
-		{
-			name:  "vnode_active_total",
-			desc:  "Number of vnodes not on free lists for a filesystem.",
-			value: float64(s.Vnode.Active),
-		},
-		{
-			name:  "vnode_allocate_total",
-			desc:  "Number of times vn_alloc called for a filesystem.",
-			value: float64(s.Vnode.Allocate),
-		},
-		{
-			name:  "vnode_get_total",
-			desc:  "Number of times vn_get called for a filesystem.",
-			value: float64(s.Vnode.Get),
-		},
-		{
-			name:  "vnode_hold_total",
-			desc:  "Number of times vn_hold called for a filesystem.",
-			value: float64(s.Vnode.Hold),
-		},
-		{
-			name:  "vnode_release_total",
-			desc:  "Number of times vn_rele called for a filesystem.",
-			value: float64(s.Vnode.Release),
-		},
-		{
-			name:  "vnode_reclaim_total",
-			desc:  "Number of times vn_reclaim called for a filesystem.",
-			value: float64(s.Vnode.Reclaim),
-		},
-		{
-			name:  "vnode_remove_total",
-			desc:  "Number of times vn_remove called for a filesystem.",
-			value: float64(s.Vnode.Remove),
 		},
 	}
 

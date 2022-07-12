@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nocpu
 // +build !nocpu
 
 package collector
@@ -22,9 +21,8 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 	"golang.org/x/sys/unix"
 )
 
@@ -83,9 +81,8 @@ func getCPUTimes() ([]cputime, error) {
 }
 
 type statCollector struct {
-	cpu    typedDesc
-	temp   typedDesc
-	logger log.Logger
+	cpu  typedDesc
+	temp typedDesc
 }
 
 func init() {
@@ -93,7 +90,7 @@ func init() {
 }
 
 // NewStatCollector returns a new Collector exposing CPU stats.
-func NewStatCollector(logger log.Logger) (Collector, error) {
+func NewStatCollector() (Collector, error) {
 	return &statCollector{
 		cpu: typedDesc{nodeCPUSecondsDesc, prometheus.CounterValue},
 		temp: typedDesc{prometheus.NewDesc(
@@ -101,7 +98,6 @@ func NewStatCollector(logger log.Logger) (Collector, error) {
 			"CPU temperature",
 			[]string{"cpu"}, nil,
 		), prometheus.GaugeValue},
-		logger: logger,
 	}, nil
 }
 
@@ -134,11 +130,11 @@ func (c *statCollector) Update(ch chan<- prometheus.Metric) error {
 		if err != nil {
 			if err == unix.ENOENT {
 				// No temperature information for this CPU
-				level.Debug(c.logger).Log("msg", "no temperature information for CPU", "cpu", cpu)
+				log.Debugf("no temperature information for CPU %d", cpu)
 			} else {
 				// Unexpected error
 				ch <- c.temp.mustNewConstMetric(math.NaN(), lcpu)
-				level.Error(c.logger).Log("msg", "failed to query CPU temperature for CPU", "cpu", cpu, "err", err)
+				log.Errorf("failed to query CPU temperature for CPU %d: %s", cpu, err)
 			}
 			continue
 		}

@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nocpu
 // +build !nocpu
 
 package collector
@@ -19,7 +18,6 @@ package collector
 import (
 	"fmt"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/procfs/sysfs"
 )
@@ -32,7 +30,6 @@ type cpuFreqCollector struct {
 	scalingFreq    *prometheus.Desc
 	scalingFreqMin *prometheus.Desc
 	scalingFreqMax *prometheus.Desc
-	logger         log.Logger
 }
 
 func init() {
@@ -40,10 +37,10 @@ func init() {
 }
 
 // NewCPUFreqCollector returns a new Collector exposing kernel/system statistics.
-func NewCPUFreqCollector(logger log.Logger) (Collector, error) {
+func NewCPUFreqCollector() (Collector, error) {
 	fs, err := sysfs.NewFS(*sysPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open sysfs: %w", err)
+		return nil, fmt.Errorf("failed to open sysfs: %v", err)
 	}
 
 	return &cpuFreqCollector{
@@ -65,26 +62,25 @@ func NewCPUFreqCollector(logger log.Logger) (Collector, error) {
 		),
 		scalingFreq: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "scaling_frequency_hertz"),
-			"Current scaled CPU thread frequency in hertz.",
+			"Current scaled cpu thread frequency in hertz.",
 			[]string{"cpu"}, nil,
 		),
 		scalingFreqMin: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "scaling_frequency_min_hertz"),
-			"Minimum scaled CPU thread frequency in hertz.",
+			prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "scaling_frequency_min_hrts"),
+			"Minimum scaled cpu thread frequency in hertz.",
 			[]string{"cpu"}, nil,
 		),
 		scalingFreqMax: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "scaling_frequency_max_hertz"),
-			"Maximum scaled CPU thread frequency in hertz.",
+			prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "scaling_frequency_max_hrts"),
+			"Maximum scaled cpu thread frequency in hertz.",
 			[]string{"cpu"}, nil,
 		),
-		logger: logger,
 	}, nil
 }
 
 // Update implements Collector and exposes cpu related metrics from /proc/stat and /sys/.../cpu/.
 func (c *cpuFreqCollector) Update(ch chan<- prometheus.Metric) error {
-	cpuFreqs, err := c.fs.SystemCpufreq()
+	cpuFreqs, err := c.fs.NewSystemCpufreq()
 	if err != nil {
 		return err
 	}

@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nomeminfo
 // +build !nomeminfo
 
 package collector
@@ -21,13 +20,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
-)
-
-var (
-	reParens = regexp.MustCompile(`\((.*)\)`)
 )
 
 func (c *meminfoCollector) getMemInfo() (map[string]float64, error) {
@@ -39,6 +33,17 @@ func (c *meminfoCollector) getMemInfo() (map[string]float64, error) {
 
 	return parseMemInfo(file)
 }
+func checkMemType(name string) bool {
+	memtypes := [5]string{"MemTotal", "Slab", "Cached", "Buffers", "MemFree"}
+
+	for _, t := range memtypes {
+		if t == name {
+			return true
+		}
+	}
+	return false
+
+}
 
 func parseMemInfo(r io.Reader) (map[string]float64, error) {
 	var (
@@ -46,30 +51,28 @@ func parseMemInfo(r io.Reader) (map[string]float64, error) {
 		scanner = bufio.NewScanner(r)
 	)
 
+	free_fv := 0.0
+	total_fv := 0.0
 	for scanner.Scan() {
 		line := scanner.Text()
 		parts := strings.Fields(line)
-		// Workaround for empty lines occasionally occur in CentOS 6.2 kernel 3.10.90.
-		if len(parts) == 0 {
-			continue
-		}
 		fv, err := strconv.ParseFloat(parts[1], 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid value in meminfo: %w", err)
+			return nil, fmt.Errorf("invalid value in meminfo: %s", err)
 		}
-		key := parts[0][:len(parts[0])-1] // remove trailing : from key
-		// Active(anon) -> Active_anon
-		key = reParens.ReplaceAllString(key, "_${1}")
-		switch len(parts) {
-		case 2: // no unit
-		case 3: // has unit, we presume kB
-			fv *= 1024
-			key = key + "_bytes"
-		default:
-			return nil, fmt.Errorf("invalid line in meminfo: %s", line)
-		}
-		memInfo[key] = fv
-	}
+		key := parts[0][:len(parts[0])-1]
 
+		if !checkMemType(key) {
+			continue
+		}
+		if key != "MemTotal" {
+			free_fv += fv
+		} else {
+			total_fv = fv
+		}
+	}
+	mem_percent := 1 - free_fv/total_fv
+	key := "MemUsed"
+	memInfo[key] = mem_percent * 100
 	return memInfo, scanner.Err()
 }

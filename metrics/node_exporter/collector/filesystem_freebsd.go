@@ -11,61 +11,69 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nofilesystem
 // +build !nofilesystem
 
 package collector
 
 import (
-	"github.com/go-kit/log/level"
+	"bytes"
+	"unsafe"
+
+	"github.com/prometheus/common/log"
 	"golang.org/x/sys/unix"
 )
 
 const (
-	defMountPointsExcluded = "^/(dev)($|/)"
-	defFSTypesExcluded     = "^devfs$"
+	defIgnoredMountPoints = "^/(dev)($|/)"
+	defIgnoredFSTypes     = "^devfs$"
+	readOnly              = 0x1 // MNT_RDONLY
+	noWait                = 0x2 // MNT_NOWAIT
 )
+
+func gostring(b []int8) string {
+	bb := *(*[]byte)(unsafe.Pointer(&b))
+	idx := bytes.IndexByte(bb, 0)
+	if idx < 0 {
+		return ""
+	}
+	return string(bb[:idx])
+}
 
 // Expose filesystem fullness.
 func (c *filesystemCollector) GetStats() ([]filesystemStats, error) {
-	n, err := unix.Getfsstat(nil, unix.MNT_NOWAIT)
+	n, err := unix.Getfsstat(nil, noWait)
 	if err != nil {
 		return nil, err
 	}
 	buf := make([]unix.Statfs_t, n)
-	_, err = unix.Getfsstat(buf, unix.MNT_NOWAIT)
+	_, err = unix.Getfsstat(buf, noWait)
 	if err != nil {
 		return nil, err
 	}
 	stats := []filesystemStats{}
 	for _, fs := range buf {
-		mountpoint := bytesToString(fs.Mntonname[:])
-		if c.excludedMountPointsPattern.MatchString(mountpoint) {
-			level.Debug(c.logger).Log("msg", "Ignoring mount point", "mountpoint", mountpoint)
+		mountpoint := gostring(fs.Mntonname[:])
+		if c.ignoredMountPointsPattern.MatchString(mountpoint) {
+			log.Debugf("Ignoring mount point: %s", mountpoint)
 			continue
 		}
 
-		device := bytesToString(fs.Mntfromname[:])
-		fstype := bytesToString(fs.Fstypename[:])
-		if c.excludedFSTypesPattern.MatchString(fstype) {
-			level.Debug(c.logger).Log("msg", "Ignoring fs type", "type", fstype)
-			continue
-		}
-
-		if (fs.Flags & unix.MNT_IGNORE) != 0 {
-			level.Debug(c.logger).Log("msg", "Ignoring mount flagged as ignore", "mountpoint", mountpoint)
+		device := gostring(fs.Mntfromname[:])
+		fstype := gostring(fs.Fstypename[:])
+		if c.ignoredFSTypesPattern.MatchString(fstype) {
+			log.Debugf("Ignoring fs type: %s", fstype)
 			continue
 		}
 
 		var ro float64
-		if (fs.Flags & unix.MNT_RDONLY) != 0 {
+		if (fs.Flags & readOnly) != 0 {
 			ro = 1
 		}
 
 		stats = append(stats, filesystemStats{
 			labels: filesystemLabels{
 				device:     device,
-				mountPoint: rootfsStripPrefix(mountpoint),
+				mountPoint: mountpoint,
 				fsType:     fstype,
 			},
 			size:      float64(fs.Blocks) * float64(fs.Bsize),

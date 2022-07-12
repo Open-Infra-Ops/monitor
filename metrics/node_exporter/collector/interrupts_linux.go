@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nointerrupts
 // +build !nointerrupts
 
 package collector
@@ -35,13 +34,13 @@ var (
 func (c *interruptsCollector) Update(ch chan<- prometheus.Metric) (err error) {
 	interrupts, err := getInterrupts()
 	if err != nil {
-		return fmt.Errorf("couldn't get interrupts: %w", err)
+		return fmt.Errorf("couldn't get interrupts: %s", err)
 	}
 	for name, interrupt := range interrupts {
 		for cpuNo, value := range interrupt.values {
 			fv, err := strconv.ParseFloat(value, 64)
 			if err != nil {
-				return fmt.Errorf("invalid value %s in interrupts: %w", value, err)
+				return fmt.Errorf("invalid value %s in interrupts: %s", value, err)
 			}
 			ch <- c.desc.mustNewConstMetric(fv, strconv.Itoa(cpuNo), name, interrupt.info, interrupt.devices)
 		}

@@ -11,27 +11,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build solaris && !noboottime
-// +build solaris,!noboottime
+// +build solaris
+// +build !noboottime
 
 package collector
 
 import (
-	"github.com/go-kit/log"
-	"github.com/illumos/go-kstat"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/siebenmann/go-kstat"
 )
 
 type bootTimeCollector struct {
 	boottime typedDesc
-	logger   log.Logger
 }
 
 func init() {
 	registerCollector("boottime", defaultEnabled, newBootTimeCollector)
 }
 
-func newBootTimeCollector(logger log.Logger) (Collector, error) {
+func newBootTimeCollector() (Collector, error) {
 	return &bootTimeCollector{
 		boottime: typedDesc{
 			prometheus.NewDesc(
@@ -39,7 +37,6 @@ func newBootTimeCollector(logger log.Logger) (Collector, error) {
 				"Unix time of last boot, including microseconds.",
 				nil, nil,
 			), prometheus.GaugeValue},
-		logger: logger,
 	}, nil
 }
 

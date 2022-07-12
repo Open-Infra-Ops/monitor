@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 version=$1
 if [[ -z $version ]];then
-  version="1.3.1"
+  version="0.18.1"
 fi
 cur_path=$(pwd)
 top_dir=$(rpm --eval "%{_topdir}")

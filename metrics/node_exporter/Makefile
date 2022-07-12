@@ -15,11 +15,11 @@
 all::
 
 # Needs to be defined before including Makefile.common to auto-generate targets
-DOCKER_ARCHS ?= amd64 armv7 arm64 ppc64le s390x
+DOCKER_ARCHS ?= amd64 armv7 arm64 ppc64le
 
 include Makefile.common
 
-PROMTOOL_VERSION ?= 2.30.0
+PROMTOOL_VERSION ?= 2.5.0
 PROMTOOL_URL     ?= https://github.com/prometheus/prometheus/releases/download/v$(PROMTOOL_VERSION)/prometheus-$(PROMTOOL_VERSION).$(GO_BUILD_PLATFORM).tar.gz
 PROMTOOL         ?= $(FIRST_GOPATH)/bin/promtool
 
@@ -45,16 +45,7 @@ else
 			PROMU_CONF ?= .promu-cgo.yml
 		endif
 	else
-		# Do not use CGO for openbsd/amd64 builds
-		ifeq ($(GOOS), openbsd)
-			ifeq ($(GOARCH), amd64)
-				PROMU_CONF ?= .promu.yml
-			else
-				PROMU_CONF ?= .promu-cgo.yml
-			endif
-		else
-			PROMU_CONF ?= .promu-cgo.yml
-		endif
+		PROMU_CONF ?= .promu-cgo.yml
 	endif
 endif
 
@@ -84,7 +75,7 @@ $(eval $(call goarch_pair,amd64,386))
 $(eval $(call goarch_pair,mips64,mips))
 $(eval $(call goarch_pair,mips64el,mipsel))
 
-all:: vet checkmetrics checkrules common-all $(cross-test) $(test-e2e)
+all:: vet checkmetrics checkrules common-all
 
 .PHONY: test
 test: collector/fixtures/sys/.unpacked
@@ -100,15 +91,11 @@ test-32bit: collector/fixtures/sys/.unpacked
 skip-test-32bit:
 	@echo ">> SKIP running tests in 32-bit mode: not supported on $(GOHOSTOS)/$(GOHOSTARCH)"
 
-%/.unpacked: %.ttar
-	@echo ">> extracting fixtures"
-	if [ -d $(dir $@) ] ; then rm -rf $(dir $@) ; fi
-	./ttar -C $(dir $*) -x -f $*.ttar
+collector/fixtures/sys/.unpacked: collector/fixtures/sys.ttar
+	@echo ">> extracting sysfs fixtures"
+	if [ -d collector/fixtures/sys ] ; then rm -r collector/fixtures/sys ; fi
+	./ttar -C collector/fixtures -x -f collector/fixtures/sys.ttar
 	touch $@
-
-update_fixtures:
-	rm -vf collector/fixtures/sys/.unpacked
-	./ttar -C collector/fixtures -c -f collector/fixtures/sys.ttar sys
 
 .PHONY: test-e2e
 test-e2e: build collector/fixtures/sys/.unpacked
@@ -138,5 +125,9 @@ test-docker:
 promtool: $(PROMTOOL)
 
 $(PROMTOOL):
+	$(eval PROMTOOL_TMP := $(shell mktemp -d))
+	curl -s -L $(PROMTOOL_URL) | tar -xvzf - -C $(PROMTOOL_TMP)
 	mkdir -p $(FIRST_GOPATH)/bin
-	curl -fsS -L $(PROMTOOL_URL) | tar -xvzf - -C $(FIRST_GOPATH)/bin --strip 1 "prometheus-$(PROMTOOL_VERSION).$(GO_BUILD_PLATFORM)/promtool"
+	cp $(PROMTOOL_TMP)/prometheus-$(PROMTOOL_VERSION).$(GO_BUILD_PLATFORM)/promtool $(FIRST_GOPATH)/bin/promtool
+	rm -r $(PROMTOOL_TMP)
+

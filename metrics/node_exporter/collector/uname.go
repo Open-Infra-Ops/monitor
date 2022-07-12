@@ -11,14 +11,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build (darwin || freebsd || openbsd || linux) && !nouname
-// +build darwin freebsd openbsd linux
+// +build freebsd linux
 // +build !nouname
 
 package collector
 
 import (
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -36,9 +34,7 @@ var unameDesc = prometheus.NewDesc(
 	nil,
 )
 
-type unameCollector struct {
-	logger log.Logger
-}
+type unameCollector struct{}
 type uname struct {
 	SysName    string
 	Release    string
@@ -53,11 +49,11 @@ func init() {
 }
 
 // NewUnameCollector returns new unameCollector.
-func newUnameCollector(logger log.Logger) (Collector, error) {
-	return &unameCollector{logger}, nil
+func newUnameCollector() (Collector, error) {
+	return &unameCollector{}, nil
 }
 
-func (c *unameCollector) Update(ch chan<- prometheus.Metric) error {
+func (c unameCollector) Update(ch chan<- prometheus.Metric) error {
 	uname, err := getUname()
 	if err != nil {
 		return err

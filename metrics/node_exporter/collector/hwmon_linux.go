@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nohwmon
 // +build !nohwmon
 
 package collector
@@ -24,11 +23,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/sys/unix"
+	"github.com/prometheus/common/log"
 )
 
 var (
@@ -47,14 +45,12 @@ func init() {
 	registerCollector("hwmon", defaultEnabled, NewHwMonCollector)
 }
 
-type hwMonCollector struct {
-	logger log.Logger
-}
+type hwMonCollector struct{}
 
 // NewHwMonCollector returns a new Collector exposing /sys/class/hwmon stats
 // (similar to lm-sensors).
-func NewHwMonCollector(logger log.Logger) (Collector, error) {
-	return &hwMonCollector{logger}, nil
+func NewHwMonCollector() (Collector, error) {
+	return &hwMonCollector{}, nil
 }
 
 func cleanMetricName(name string) string {
@@ -90,9 +86,9 @@ func sysReadFile(file string) ([]byte, error) {
 	// Go's ioutil.ReadFile implementation to poll forever.
 	//
 	// Since we either want to read data or bail immediately, do the simplest
-	// possible read using system call directly.
+	// possible read using syscall directly.
 	b := make([]byte, 128)
-	n, err := unix.Read(int(f.Fd()), b)
+	n, err := syscall.Read(int(f.Fd()), b)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +345,7 @@ func (c *hwMonCollector) hwmonName(dir string) (string, error) {
 	// However the path of the device has to be stable:
 	// - /sys/devices/<bus>/<device>
 	// Some hardware monitors have a "name" file that exports a human
-	// readable name that can be used.
+	// readbale name that can be used.
 
 	// human readable names would be bat0 or coretemp, while a path string
 	// could be platform_applesmc.768
@@ -425,9 +421,9 @@ func (c *hwMonCollector) Update(ch chan<- prometheus.Metric) error {
 
 	hwmonFiles, err := ioutil.ReadDir(hwmonPathName)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			level.Debug(c.logger).Log("msg", "hwmon collector metrics are not available for this system")
-			return ErrNoData
+		if os.IsNotExist(err) {
+			log.Debug("hwmon collector metrics are not available for this system")
+			return nil
 		}
 
 		return err

@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nologind
 // +build !nologind
 
 package collector
@@ -21,7 +20,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/go-kit/log"
 	"github.com/godbus/dbus"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -45,9 +43,7 @@ var (
 	)
 )
 
-type logindCollector struct {
-	logger log.Logger
-}
+type logindCollector struct{}
 
 type logindDbus struct {
 	conn   *dbus.Conn
@@ -86,14 +82,14 @@ func init() {
 }
 
 // NewLogindCollector returns a new Collector exposing logind statistics.
-func NewLogindCollector(logger log.Logger) (Collector, error) {
-	return &logindCollector{logger}, nil
+func NewLogindCollector() (Collector, error) {
+	return &logindCollector{}, nil
 }
 
 func (lc *logindCollector) Update(ch chan<- prometheus.Metric) error {
 	c, err := newDbus()
 	if err != nil {
-		return fmt.Errorf("unable to connect to dbus: %w", err)
+		return fmt.Errorf("unable to connect to dbus: %s", err)
 	}
 	defer c.conn.Close()
 
@@ -103,12 +99,12 @@ func (lc *logindCollector) Update(ch chan<- prometheus.Metric) error {
 func collectMetrics(ch chan<- prometheus.Metric, c logindInterface) error {
 	seats, err := c.listSeats()
 	if err != nil {
-		return fmt.Errorf("unable to get seats: %w", err)
+		return fmt.Errorf("unable to get seats: %s", err)
 	}
 
 	sessionList, err := c.listSessions()
 	if err != nil {
-		return fmt.Errorf("unable to get sessions: %w", err)
+		return fmt.Errorf("unable to get sessions: %s", err)
 	}
 
 	sessions := make(map[logindSession]float64)

@@ -11,8 +11,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build solaris && !nocpu
-// +build solaris,!nocpu
+// +build solaris
+// +build !nocpu
 
 package collector
 
@@ -20,9 +20,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/go-kit/log"
-	"github.com/illumos/go-kstat"
 	"github.com/prometheus/client_golang/prometheus"
+	kstat "github.com/siebenmann/go-kstat"
 )
 
 // #include <unistd.h>
@@ -31,30 +30,28 @@ import "C"
 type cpuFreqCollector struct {
 	cpuFreq    *prometheus.Desc
 	cpuFreqMax *prometheus.Desc
-	logger     log.Logger
 }
 
 func init() {
 	registerCollector("cpufreq", defaultEnabled, NewCpuFreqCollector)
 }
 
-func NewCpuFreqCollector(logger log.Logger) (Collector, error) {
+func NewFreqCpuCollector() (Collector, error) {
 	return &cpuFreqCollector{
 		cpuFreq: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "frequency_hertz"),
-			"Current CPU thread frequency in hertz.",
+			"Current cpu thread frequency in hertz.",
 			[]string{"cpu"}, nil,
 		),
 		cpuFreqMax: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "frequency_max_hertz"),
-			"Maximum CPU thread frequency in hertz.",
+			"Maximum cpu thread frequency in hertz.",
 			[]string{"cpu"}, nil,
 		),
-		logger: logger,
 	}, nil
 }
 
-func (c *cpuFreqCollector) Update(ch chan<- prometheus.Metric) error {
+func (c *cpuCollector) Update(ch chan<- prometheus.Metric) error {
 	ncpus := C.sysconf(C._SC_NPROCESSORS_ONLN)
 
 	tok, err := kstat.Open()

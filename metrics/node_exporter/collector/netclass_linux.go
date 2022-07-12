@@ -11,27 +11,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !nonetclass && linux
-// +build !nonetclass,linux
+// +build !nonetclass
+// +build linux
 
 package collector
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"regexp"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/procfs/sysfs"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
 	netclassIgnoredDevices = kingpin.Flag("collector.netclass.ignored-devices", "Regexp of net devices to ignore for netclass collector.").Default("^$").String()
-	netclassInvalidSpeed   = kingpin.Flag("collector.netclass.ignore-invalid-speed", "Ignore devices where the speed is invalid. This will be the default behavior in 2.x.").Bool()
 )
 
 type netClassCollector struct {
@@ -39,7 +34,6 @@ type netClassCollector struct {
 	subsystem             string
 	ignoredDevicesPattern *regexp.Regexp
 	metricDescs           map[string]*prometheus.Desc
-	logger                log.Logger
 }
 
 func init() {
@@ -47,10 +41,10 @@ func init() {
 }
 
 // NewNetClassCollector returns a new Collector exposing network class stats.
-func NewNetClassCollector(logger log.Logger) (Collector, error) {
+func NewNetClassCollector() (Collector, error) {
 	fs, err := sysfs.NewFS(*sysPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open sysfs: %w", err)
+		return nil, fmt.Errorf("failed to open sysfs: %v", err)
 	}
 	pattern := regexp.MustCompile(*netclassIgnoredDevices)
 	return &netClassCollector{
@@ -58,18 +52,13 @@ func NewNetClassCollector(logger log.Logger) (Collector, error) {
 		subsystem:             "network",
 		ignoredDevicesPattern: pattern,
 		metricDescs:           map[string]*prometheus.Desc{},
-		logger:                logger,
 	}, nil
 }
 
 func (c *netClassCollector) Update(ch chan<- prometheus.Metric) error {
 	netClass, err := c.getNetClassInfo()
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
-			level.Debug(c.logger).Log("msg", "Could not read netclass file", "err", err)
-			return ErrNoData
-		}
-		return fmt.Errorf("could not get net class info: %w", err)
+		return fmt.Errorf("could not get net class info: %s", err)
 	}
 	for _, ifaceInfo := range netClass {
 		upDesc := prometheus.NewDesc(
@@ -152,11 +141,8 @@ func (c *netClassCollector) Update(ch chan<- prometheus.Metric) error {
 		}
 
 		if ifaceInfo.Speed != nil {
-			// Some devices return -1 if the speed is unknown.
-			if *ifaceInfo.Speed >= 0 || !*netclassInvalidSpeed {
-				speedBytes := int64(*ifaceInfo.Speed * 1000 * 1000 / 8)
-				pushMetric(ch, c.subsystem, "speed_bytes", speedBytes, ifaceInfo.Name, prometheus.GaugeValue)
-			}
+			speedBytes := int64(*ifaceInfo.Speed / 8 * 1000 * 1000)
+			pushMetric(ch, c.subsystem, "speed_bytes", speedBytes, ifaceInfo.Name, prometheus.GaugeValue)
 		}
 
 		if ifaceInfo.TxQueueLen != nil {
@@ -183,21 +169,16 @@ func pushMetric(ch chan<- prometheus.Metric, subsystem string, name string, valu
 }
 
 func (c *netClassCollector) getNetClassInfo() (sysfs.NetClass, error) {
-	netClass := sysfs.NetClass{}
-	netDevices, err := c.fs.NetClassDevices()
+	netClass, err := c.fs.NewNetClass()
+
 	if err != nil {
-		return netClass, err
+		return netClass, fmt.Errorf("error obtaining net class info: %s", err)
 	}
 
-	for _, device := range netDevices {
+	for device := range netClass {
 		if c.ignoredDevicesPattern.MatchString(device) {
-			continue
+			delete(netClass, device)
 		}
-		interfaceClass, err := c.fs.NetClassByIface(device)
-		if err != nil {
-			return netClass, err
-		}
-		netClass[device] = *interfaceClass
 	}
 
 	return netClass, nil
