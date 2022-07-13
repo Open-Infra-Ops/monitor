@@ -1,0 +1,10 @@
+k8s采集点：
+
+采集coredns参数指标：
+kubectl -n kube-system get po -owide|grep coredns
+curl http://172.16.103.131:9153/metrics
+
+
+
+
+

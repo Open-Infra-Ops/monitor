@@ -42,7 +42,7 @@ docker run -d -p 3000:3000 --name=grafana -v /opt/grafana-storage:/var/lib/grafa
 (3)exporter: 项目主要在metrics文件夹中:
 
 1.ecs-->node_exporter：
-1>.采集指标：cpu, 内存, 硬盘大小, 后续还有带宽？，
+1>.采集指标：cpu, 内存, 硬盘大小, 带宽。
 2>.服务处理：源码编译, 将node_exporter作出systemd服务进行托管, 适配x86、 arm。
 
 
