@@ -1,9 +1,30 @@
-k8s采集点：
+一、k8s性能监控方案：
+Heapster: 是一个集群范围的监控和数据聚合工具，以Pod的形式运行在集群中。除了Kubelet/cAdvisor之外，我们还可以向 Heapster 添加其他指标源数据比如 kube-state-metrics。
+cAdvisor: 是Google开源的容器资源监控和性能分析工具，它是专门为容器而生，本身也支持Docker容器，在Kubernetes中，我们不需要单独去安装，cAdvisor 作为 kubelet 内置的一部分程序可以直接使用。
+Kube-state-metrics: 通过监听 API Server 生成有关资源对象的状态指标，比如 Deployment、Node、Pod，需要注意的是 kube-state-metrics 只是简单提供一个 metrics 数据，并不会存储这些指标数据，所以我们可以使用 Prometheus 来抓取这些数据然后存储。
+metrics-server: 也是一个集群范围内的资源数据聚合工具，是 Heapster 的替代品，同样的，metrics-server 也只是显示数据，并不提供数据存储服务。
 
-采集coredns参数指标：
-kubectl -n kube-system get po -owide|grep coredns
-curl http://172.16.103.131:9153/metrics
+不过 kube-state-metrics 和 metrics-server 之间还是有很大不同的，二者的主要区别如下：
+kube-state-metrics 主要关注的是业务相关的一些元数据，比如 Deployment、Pod、副本状态等; metrics-server 主要关注的是资源度量 API 的实现，比如 CPU、文件描述符、内存、请求延时等指标。
 
+
+二、总结和使用：
+pod性能：
+  使用c-advisor进行实现，监控容器的CPU、内存利用率.
+
+Node性能：
+  使用node-exporter实现，主要监控节点CPU、内存利用率.
+  之前编译出的数据的，写一个dockerfile文件
+
+K8S资源对象：
+  使用kube-state-metrics实现，主要用于监控pod、deployment、service.
+
+
+
+三、华为云的测试方法：
+1.通过api调用, 无性能监控数据
+2.icAgent采集--->AOM采集
+3.研究c-advisor使用？
 
 
 

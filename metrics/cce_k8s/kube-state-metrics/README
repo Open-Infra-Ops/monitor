@@ -1,0 +1,13 @@
+
+kube-state-metrics:
+
+1.部署：使用yaml文件在k8s中进行部署
+
+2.采集：
+curl http://10.103.188.252:8080/metrics
+
+
+
+
+
+
