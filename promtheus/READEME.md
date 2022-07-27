@@ -1,0 +1,23 @@
+docker run  -d -p 9090:9090 -v /opt/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+
+
+mkdir /opt/prometheus
+cd /opt/prometheus/
+vim prometheus.yml
+
+global:
+  scrape_interval:     60s
+  evaluation_interval: 60s
+
+scrape_configs:
+
+- job_name: prometheus
+  static_configs:
+  - targets: ['localhost:9090']
+    labels:
+      instance: prometheus
+- job_name: linux
+  static_configs:
+  - targets: ['192.168.91.132:9100']
+    labels:
+      instance: localhost
