@@ -1,16 +1,22 @@
 一.将node_exporter的源码包打包成rpm包, 本源码在node_exporter 0.18.1的基础上进行适配
 1.编译环境准备
-安装rpmbuild, go(go的版本号必须大于1.4)
+    安装rpmbuild, go(go的版本号必须大于1.4)
 
 
 2.修改node_exporter.service
-cd ./examples/systemd/
-vim node_exporter.service
+    cd ./examples/systemd/
+    vim node_exporter.service
 
 
 3.进行编译
-cd node_exporter
-sh -x make_rpm.sh
+    cd node_exporter
+    sh -x make_rpm.sh
+
+
+4.注意点
+    1.如果编译报错：\r command not found?
+    解决方法： centos用yum install dos2unix，修改相应的文件 即 dos2unix node_exporter.ba.spec 即可.
+
 
 
 

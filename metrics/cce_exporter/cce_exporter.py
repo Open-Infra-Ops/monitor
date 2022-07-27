@@ -6,6 +6,8 @@
 import json
 import math
 import re
+import time
+
 import requests
 import logging
 import os
@@ -24,9 +26,10 @@ logger = logging.getLogger('cce_exporter')
 
 
 class GlobalConfig(object):
-    bootstrap_servers = ["192.168.1.235:9092", "192.168.1.196:9092", "192.168.1.228:9092"]
-    topic_name = 'aom-metrics'
-    consumer_id = 'comsumer-aom-metrics'
+    bootstrap_servers = os.getenv("kafka_server", "").split(",")
+    topic_name = os.getenv("kafka_topic", "aom-metrics-{}".format(int(time.time())))
+    consumer_id = os.getenv("kafka_consumer_id", 'comsumer-aom-metrics-{}'.format(int(time.time())))
+    port = os.getenv("port", 8000)
     collect_metrics = ["memUsage", "cpuUsage", "filesystemCapacity", "filesystemAvailable"]
 
 
@@ -247,7 +250,7 @@ def collect_metrics():
 def main():
     EipTools.init_logger()
     EipTools.init_task()
-    APP.run(port=8080, debug=False)
+    APP.run(port=GlobalConfig.port, debug=False)
 
 
 if __name__ == '__main__':

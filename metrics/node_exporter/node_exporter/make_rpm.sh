@@ -17,4 +17,4 @@ cp node_exporter $top_dir$build_root_path$pkg_name"/usr/bin"
 cp examples/systemd/node_exporter.service $top_dir$build_root_path$pkg_name"/usr/lib/systemd/system"
 sed "s#{version}#$version#g" node_exporter.ba.spec > node_exporter.spec
 rpmbuild -ba node_exporter.spec
-echo "success....
+echo "success...."

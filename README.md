@@ -10,11 +10,11 @@
 
 ## 3.解决方案
 
-![](C:\Users\Administrator\Desktop\github\monitor\doc\solution.png)
+![Image](https://github.com/Open-Infra-Ops/monitor/raw/main/doc/solution.png)
 
-​		对于ecs局域网内，使用node_exporter获取节点的内存，cpu，硬盘总容量，硬盘的使用容量。
+​		对于ecs局域网内，使用node_exporter获取节点的内存，cpu，硬盘总容量，硬盘的使用容量；部署时每个节点都需要部署一个node_exporter。
 
-​		对于cce局域网内，使用aom+kafka+cce_exporter获取容器的内存，cpu，挂载盘总容量，挂载盘的使用容量。
+​		对于cce局域网内，使用aom+kafka+cce_exporter获取容器的内存，cpu，挂载盘总容量，挂载盘的使用容量；部署时一个CCE集群需要部署一个cce_exporter和kafka集群。
 
 ## 4.部署方案
 
