@@ -1,0 +1,65 @@
+一、prometheus对接c-advisor
+1.创建密钥：
+    1.7.3版本以后详细使用方法：
+    kubectl create ns monitor-sa
+    kubectl create serviceaccount monitor -n monitor-sa
+    kubectl create clusterrolebinding monitor-clusterrolebinding -n monitor-sa --clusterrole=cluster-admin --serviceaccount=monitor-sa:monitor
+    kubectl get secret -n monitor-sa
+    kubectl describe secret monitor-token-cqtd4 -n monitor-sa
+
+
+2.获取数据
+    简单内容：
+    curl https://127.0.0.1:10250/metrics/cadvisor -k -H "Authorization:Bearer *****"  # token可以在prometheus抓取的时候配置, 但是不知道代理是否可以传送？
+    更详细的内容：
+    curl -k https://192.168.1.115:6443/metrics -H "Authorization:Bearer ******
+
+3.prometheus配置
+    global:
+      scrape_interval:     15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: k8s-cluster
+
+    scrape_configs:
+      - job_name: 'hwstaff_beijing4'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+            target_label: __metrics_path__
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - source_labels: [__meta_kubernetes_node_name]
+            action: replace
+            target_label: node
+          - source_labels: [__meta_kubernetes_node_label_node]
+            action: replace
+            target_label: node_name
+
+
+
+4. 监控的指标：
+指标-------------------------------------类型---------含义
+container_cpu_load_average_10s          gauge       过去10秒容器CPU的平均负载
+container_cpu_usage_seconds_total       counter     容器在每个CPU内核上的累积占用时间 (单位：秒)
+container_cpu_system_seconds_total      counter     System CPU累积占用时间（单位：秒）
+container_cpu_user_seconds_total        counter     User CPU累积占用时间（单位：秒）
+container_fs_usage_bytes                gauge       容器中文件系统的使用量(单位：字节)
+container_fs_limit_bytes                gauge       容器可以使用的文件系统总量(单位：字节)
+container_fs_reads_bytes_total          counter     容器累积读取数据的总量(单位：字节)
+container_fs_writes_bytes_total         counter     容器累积写入数据的总量(单位：字节)
+container_memory_max_usage_bytes        gauge       容器的最大内存使用量（单位：字节）
+container_memory_usage_bytes            gauge       容器当前的内存使用量（单位：字节
+container_spec_memory_limit_bytes       gauge       容器的内存使用量限制
+machine_memory_bytes                    gauge       当前主机的内存总量
+container_network_receive_bytes_total   counter     容器网络累积接收数据总量（单位：字节）
+container_network_transmit_bytes_total  counter     容器网络累积传输数据总量（单位：字节）
