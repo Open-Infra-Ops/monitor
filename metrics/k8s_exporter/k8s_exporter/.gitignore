@@ -1,0 +1,7 @@
+*~
+/prometheus-postgresql-adapter*
+/.target_os
+/.history
+/.vscode
+/.idea
+
