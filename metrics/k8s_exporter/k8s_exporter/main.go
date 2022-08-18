@@ -5,57 +5,40 @@
 //
 // http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 // The main package for the Prometheus server executable.
 package main
 
-// Based on the Prometheus remote storage example:
-// documentation/examples/remote_storage/remote_storage_adapter/main.go
-
 import (
+	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"pm_adapter/mysql"
 	"sync/atomic"
 	"time"
 
-	//"github.com/timescale/prometheus-postgresql-adapter/log"
-	"pm_adapter/log"
-	//"github.com/timescale/prometheus-postgresql-adapter/util"
+	prometheusClient "k8s_exporter/src"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/jamiealquiza/envy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-
-	"github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
 )
 
 type config struct {
-	remoteTimeout     time.Duration
-	listenAddr        string
-	telemetryPath     string
-	config            mysql_prometheus.Config
-	logLevel          string
-	haGroupLockId     int
-	restElection      bool
-	prometheusTimeout time.Duration
+	listenAddr    string
+	telemetryPath string
+	logLevel      string
 }
 
-const (
-	tickInterval      = time.Second
-	promLivenessCheck = time.Second
-)
+type JsonResult struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+}
 
 var (
 	receivedSamples = prometheus.NewCounter(
@@ -94,12 +77,8 @@ var (
 		},
 		[]string{"path"},
 	)
-	//writeThroughput     = util.NewThroughputCalc(tickInterval)
 	lastRequestUnixNano = time.Now().UnixNano()
 )
-
-var url string
-var pass string
 
 func init() {
 	prometheus.MustRegister(receivedSamples)
@@ -107,42 +86,46 @@ func init() {
 	prometheus.MustRegister(failedSamples)
 	prometheus.MustRegister(sentBatchDuration)
 	prometheus.MustRegister(httpRequestDuration)
-	//writeThroughput.Start()
-
-}
-
-func main() {
-	cfg := parseFlags()
-	log.Init(cfg.logLevel)
-	//log.Info("config", fmt.Sprintf("%+v", cfg))
-	http.Handle(cfg.telemetryPath, prometheus.Handler())
-	writer, reader := buildClients(cfg)
-	http.Handle("/write", timeHandler("write", write(writer)))
-	http.Handle("/read", timeHandler("read", read(reader)))
-	http.Handle("/healthz", health(reader))
-	log.Info("msg", "Starting up...")
-	log.Info("msg", "Listening", "addr", cfg.listenAddr)
-	err := http.ListenAndServe(cfg.listenAddr, nil)
-	if err != nil {
-		log.Error("msg", "Listen failure", "err", err)
-		os.Exit(1)
-	}
 }
 
 func parseFlags() *config {
 	cfg := &config{}
-	flag.DurationVar(&cfg.remoteTimeout, "adapter-send-timeout", 30*time.Second, "The timeout to use when sending samples to the remote storage.")
 	flag.StringVar(&cfg.listenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.telemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.logLevel, "log-level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
-	flag.DurationVar(&cfg.prometheusTimeout, "leader-election-pg-advisory-lock-prometheus-timeout", -1, "Adapter will resign if there are no requests from Prometheus within a given timeout (0 means no timeout). "+
-		"Note: make sure that only one Prometheus instance talks to the adapter. Timeout value should be co-related with Prometheus scrape interval but add enough `slack` to prevent random flips.")
-	flag.StringVar(&url, "h", "127.0.0.1", "mysql url")
-	flag.StringVar(&pass, "p", "1293", "password")
 	envy.Parse("TS_PROM")
 	flag.Parse()
-	mysql_prometheus.ParseFlags(&cfg.config, url, pass)
 	return cfg
+}
+
+func main() {
+	cfg := parseFlags()
+	prometheusClient.Init(cfg.logLevel)
+	writer, reader := buildClients(cfg)
+	metricsPath := cfg.telemetryPath
+	http.Handle(metricsPath, timeHandler(metricsPath[1:], read(reader)))
+	http.Handle("/write", timeHandler("write", write(writer)))
+	http.Handle("/health", health(reader))
+	http.Handle("/", index(cfg))
+	prometheusClient.Info("msg", "Starting up...")
+	prometheusClient.Info("msg", "Listening", "addr", cfg.listenAddr)
+	err := http.ListenAndServe(cfg.listenAddr, nil)
+	if err != nil {
+		prometheusClient.Error("msg", "Listen failure", "err", err)
+		os.Exit(1)
+	}
+}
+
+// instantiate the client
+func buildClients(cfg *config) (writer, reader) {
+	mySqlClient := prometheusClient.NewClient(cfg.telemetryPath)
+	return mySqlClient, mySqlClient
+}
+
+type reader interface {
+	Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error)
+	Name() string
+	HealthCheck() error
 }
 
 type writer interface {
@@ -153,139 +136,12 @@ type writer interface {
 type noOpWriter struct{}
 
 func (no *noOpWriter) Write(samples model.Samples) error {
-	log.Debug("msg", "Noop writer", "num_samples", len(samples))
+	prometheusClient.Debug("msg", "Noop writer", "num_samples", len(samples))
 	return nil
 }
 
 func (no *noOpWriter) Name() string {
 	return "noopWriter"
-}
-
-type reader interface {
-	Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error)
-	Name() string
-	HealthCheck() error
-}
-
-func buildClients(cfg *config) (writer, reader) {
-	mySqlClient := mysql_prometheus.NewClient(&cfg.config)
-	if mySqlClient.ReadOnly() {
-		return &noOpWriter{}, mySqlClient
-	}
-	return mySqlClient, mySqlClient
-}
-
-func write(writer writer) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		compressed, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			log.Error("msg", "Read error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		reqBuf, err := snappy.Decode(nil, compressed)
-		if err != nil {
-			log.Error("msg", "Decode error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		var req prompb.WriteRequest
-		if err := proto.Unmarshal(reqBuf, &req); err != nil {
-			log.Error("msg", "Unmarshal error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		samples := protoToSamples(&req)
-		receivedSamples.Add(float64(len(samples)))
-
-		err = sendSamples(writer, samples)
-		if err != nil {
-			log.Warn("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
-		}
-
-		//counter, err := sentSamples.GetMetricWithLabelValues(writer.Name())
-		//if err != nil {
-		//	log.Warn("msg", "Couldn't get a counter", "labelValue", writer.Name(), "err", err)
-		//}
-		//writeThroughput.SetCurrent(getCounterValue(counter))
-
-		//select {
-		//case  <-writeThroughput.Values:
-		//	//log.Info("msg", "Samples write throughput", "samples/sec", d)
-		//	break;
-		//default:
-		//}
-	})
-}
-
-func getCounterValue(counter prometheus.Counter) float64 {
-	dtoMetric := &io_prometheus_client.Metric{}
-	if err := counter.Write(dtoMetric); err != nil {
-		log.Warn("msg", "Error reading counter value", "err", err, "sentSamples", sentSamples)
-	}
-	return dtoMetric.GetCounter().GetValue()
-}
-
-func read(reader reader) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		compressed, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			log.Error("msg", "Read error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		reqBuf, err := snappy.Decode(nil, compressed)
-		if err != nil {
-			log.Error("msg", "Decode error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		var req prompb.ReadRequest
-		if err := proto.Unmarshal(reqBuf, &req); err != nil {
-			log.Error("msg", "Unmarshal error", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		var resp *prompb.ReadResponse
-		resp, err = reader.Read(&req)
-		if err != nil {
-			log.Warn("msg", "Error executing query", "query", req, "storage", reader.Name(), "err", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		data, err := proto.Marshal(resp)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/x-protobuf")
-		w.Header().Set("Content-Encoding", "snappy")
-
-		compressed = snappy.Encode(nil, data)
-		if _, err := w.Write(compressed); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-}
-
-func health(reader reader) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		err := reader.HealthCheck()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Length", "0")
-	})
 }
 
 func protoToSamples(req *prompb.WriteRequest) model.Samples {
@@ -311,9 +167,7 @@ func sendSamples(w writer, samples model.Samples) error {
 	atomic.StoreInt64(&lastRequestUnixNano, time.Now().UnixNano())
 	begin := time.Now()
 	var err error
-
 	err = w.Write(samples)
-
 	duration := time.Since(begin).Seconds()
 	if err != nil {
 		failedSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
@@ -322,6 +176,94 @@ func sendSamples(w writer, samples model.Samples) error {
 	sentSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
 	sentBatchDuration.WithLabelValues(w.Name()).Observe(duration)
 	return nil
+}
+
+func write(writer writer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		compressed, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			prometheusClient.Error("msg", "Read error", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		reqBuf, err := snappy.Decode(nil, compressed)
+		if err != nil {
+			prometheusClient.Error("msg", "Decode error", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var req prompb.WriteRequest
+		if err := proto.Unmarshal(reqBuf, &req); err != nil {
+			prometheusClient.Error("msg", "Unmarshal error", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		samples := protoToSamples(&req)
+		receivedSamples.Add(float64(len(samples)))
+
+		err = sendSamples(writer, samples)
+		if err != nil {
+			prometheusClient.Warn("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
+		}
+
+	})
+}
+
+func read(reader reader) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req prompb.ReadRequest
+		var resp *prompb.ReadResponse
+		var err error
+		resp, err = reader.Read(&req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		w.Header().Set("Content-Encoding", "snappy")
+
+	})
+}
+
+func health(reader reader) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := reader.HealthCheck()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		msg, _ := json.Marshal(JsonResult{Code: 200, Msg: "ok"})
+		w.Header().Set("content-type", "text/json")
+		_, err = w.Write(msg)
+		if err != nil {
+			prometheusClient.Error("msg", "health api", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
+}
+
+func index(cfg *config) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		indexTemplates := `<!DOCTYPE html>
+		<html>
+		<head><title>K8S Exporter</title></head>
+		<body>
+		<h1>K8S Exporter</h1>
+		<p><a href=` + cfg.telemetryPath + `>Metrics</a></p>
+		</body>
+		</html>`
+		_, err := fmt.Fprintf(w, indexTemplates)
+		if err != nil {
+			prometheusClient.Error("msg", "index api", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
 }
 
 // timeHandler uses Prometheus histogram to track request time

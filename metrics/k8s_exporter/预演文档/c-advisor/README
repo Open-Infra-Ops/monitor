@@ -63,3 +63,21 @@ container_spec_memory_limit_bytes       gauge       容器的内存使用量限�
 machine_memory_bytes                    gauge       当前主机的内存总量
 container_network_receive_bytes_total   counter     容器网络累积接收数据总量（单位：字节）
 container_network_transmit_bytes_total  counter     容器网络累积传输数据总量（单位：字节）
+
+
+采集的指标：
+container_cpu_load_average_10s
+
+
+container_memory_usage_bytes    容器当前的内存使用量（单位：字节）
+
+
+container_memory_max_usage_bytes        gauge       容器的最大内存使用量（单位：字节）
+
+
+container_fs_usage_bytes                gauge       容器中文件系统的使用量(单位：字节)
+
+
+container_fs_limit_bytes                gauge       容器可以使用的文件系统总量(单位：字节)
+
+

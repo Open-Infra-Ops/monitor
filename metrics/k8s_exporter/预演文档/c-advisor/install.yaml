@@ -93,6 +93,8 @@ data:
           - source_labels: [__meta_kubernetes_node_label_node]
             action: replace
             target_label: node_name
+    remote_write:
+      - url: "http://192.168.1.51:9201/write"
 ---
 apiVersion: apps/v1
 kind: Deployment

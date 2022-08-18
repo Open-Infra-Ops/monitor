@@ -1,4 +1,4 @@
-package log
+package PrometheusClient
 
 import (
 	"github.com/go-kit/kit/log"
@@ -37,7 +37,6 @@ func (l *AllowedLevel) Set(s string) error {
 }
 
 func New(al AllowedLevel) log.Logger {
-
 	l := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
 	l = level.NewFilter(l, al.o)
 	l = log.With(l, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
@@ -47,24 +46,26 @@ func New(al AllowedLevel) log.Logger {
 func Init(logLevel string) {
 	allowedLevel := promlog.AllowedLevel{}
 	allowedLevel.Set(logLevel)
-	logger = promlog.New(allowedLevel)
-
+	logConfig := promlog.Config{
+		Level: &allowedLevel,
+	}
+	logger = promlog.New(&logConfig)
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
 }
 
-func Debug(keyvals ...interface{}) {
-	level.Debug(logger).Log(keyvals...)
+func Debug(keyValues ...interface{}) {
+	level.Debug(logger).Log(keyValues...)
 }
 
-func Info(keyvals ...interface{}) {
-	level.Info(logger).Log(keyvals...)
+func Info(keyValues ...interface{}) {
+	level.Info(logger).Log(keyValues...)
 }
 
-func Warn(keyvals ...interface{}) {
-	level.Warn(logger).Log(keyvals...)
+func Warn(keyValues ...interface{}) {
+	level.Warn(logger).Log(keyValues...)
 }
 
-func Error(keyvals ...interface{}) {
-	level.Error(logger).Log(keyvals...)
+func Error(keyValues ...interface{}) {
+	level.Error(logger).Log(keyValues...)
 }
