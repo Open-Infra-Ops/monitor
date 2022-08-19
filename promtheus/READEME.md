@@ -42,14 +42,7 @@ scrape_configs:
 3.启动容器
 
 ~~~bash
-docker run -dit -p 9090:9090 \
--v /opt/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml \
--v /opt/prometheus/prometheus-data:/prometheus 
--v /opt/prometheus/conf:/etc/prometheus/conf 
---name prometheus prom/prometheus \
---config.file=/etc/prometheus/prometheus.yml  \
---storage.tsdb.path=/prometheus  \
---storage.tsdb.retention=1d 
+docker run -dit -p 9090:9090 -v /opt/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml -v /opt/prometheus/prometheus-data:/prometheus -v /opt/prometheus/conf:/etc/prometheus/conf --name prometheus prom/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention=1d 
 
 storage.tsdb.path: 存数据的位置
 config.file: 以指定的配置启动

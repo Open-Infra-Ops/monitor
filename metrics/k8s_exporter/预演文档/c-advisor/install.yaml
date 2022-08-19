@@ -218,4 +218,4 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - name: AGENT_CONFIG
-              value: "https://raw.githubusercontent.com/Open-Infra-Ops/monitor/main/prometheus-agent/prometheus-proxy-agent.conf"
+              value: "https://github.com/Open-Infra-Ops/monitor/raw/main/prometheus-agent/conf/k8s_account_zone_cluster.conf"

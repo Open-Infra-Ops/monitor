@@ -16,6 +16,9 @@ docker run -dit --name prometheus-proxy -p 8082:8082 -p 8092:8092 -p 50051:50051
 METRICS_ENABLED: true  提供prometheus-agent的metrics指标，这些都可以屏蔽，开放端口8082
 ADMIN_ENABLED: true   提供管理者进行查询使用，这些都可以屏蔽，开放端口8092
 
+
+docker run -dit --name prometheus-proxy -p 50051:50051 -p 8080:8080  pambrose/prometheus-proxy:1.13.0
+
 50051：监听各个prometheus-agent的数据推送
 8080： 暴露数据给prometheus的端口
 ~~~
