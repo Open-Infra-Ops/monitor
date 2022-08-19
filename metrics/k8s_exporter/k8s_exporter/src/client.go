@@ -34,7 +34,7 @@ type MonItem struct {
 	NameSpace string
 	Pod       string
 	Name      string
-	Value     int64
+	Value     float64
 	Info      map[string]string
 }
 
@@ -167,6 +167,13 @@ func setMemData(t MonItem) {
 	MemData[mapKey] = t
 }
 
+// GetMemData get mem data
+func GetMemData() map[string]MonItem {
+	RwMutex.RLock()
+	defer RwMutex.RUnlock()
+	return MemData
+}
+
 // Write implements the Writer interface and writes metric samples to the database
 func (c *Client) Write(samples model.Samples) error {
 	for _, sample := range samples {
@@ -180,19 +187,16 @@ func (c *Client) Write(samples model.Samples) error {
 		if !checkParam(t) {
 			continue
 		}
-		var value int64
+		var value float64
 		if math.IsNaN(float64(sample.Value)) {
-			value = -1
+			value = float64(-1)
 		} else {
-			value = int64(sample.Value)
+			value = float64(sample.Value)
 		}
 		t.Value = value
 		setMemData(t)
-		temp := t.Job + "_" + t.Cluster + "_" + t.NameSpace + "_" + t.Pod + "_" + t.Name + "_" + strconv.FormatInt(t.Value, 10)
+		temp := t.Job + "_" + t.Cluster + "_" + t.NameSpace + "_" + t.Pod + "_" + t.Name + "_" + strconv.FormatFloat(t.Value, 'E', -1, 64)
 		Info("msg", "data:", "collect--->", temp)
-		//for key, value := range t.Info {
-		//	Info("key=", key, "value=", value)
-		//}
 	}
 	return nil
 }
@@ -260,8 +264,6 @@ func (l *sampleLabels) len() int {
 
 // Read implements the Reader interface and reads metrics samples from the database
 func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
-	//1.从内存中获取
-	//2.调用prometheus库进行暴露
 	labelsToSeries := map[string]*prompb.TimeSeries{}
 	resp := prompb.ReadResponse{
 		Results: []*prompb.QueryResult{

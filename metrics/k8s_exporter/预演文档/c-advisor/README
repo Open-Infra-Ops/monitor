@@ -50,16 +50,28 @@
 4. 监控的指标：
 指标-------------------------------------类型---------含义
 container_cpu_load_average_10s          gauge       过去10秒容器CPU的平均负载
+
 container_cpu_usage_seconds_total       counter     容器在每个CPU内核上的累积占用时间 (单位：秒)
 container_cpu_system_seconds_total      counter     System CPU累积占用时间（单位：秒）
 container_cpu_user_seconds_total        counter     User CPU累积占用时间（单位：秒）
+
 container_fs_usage_bytes                gauge       容器中文件系统的使用量(单位：字节)
 container_fs_limit_bytes                gauge       容器可以使用的文件系统总量(单位：字节)
+
 container_fs_reads_bytes_total          counter     容器累积读取数据的总量(单位：字节)
 container_fs_writes_bytes_total         counter     容器累积写入数据的总量(单位：字节)
+
+
+
+container_memory_usage_bytes            gauge       容器当前的内存使用量（单位：字节）
+
+
 container_memory_max_usage_bytes        gauge       容器的最大内存使用量（单位：字节）
-container_memory_usage_bytes            gauge       容器当前的内存使用量（单位：字节
-container_spec_memory_limit_bytes       gauge       容器的内存使用量限制
+
+
+container_spec_memory_limit_bytes       gauge       容器的内存使用量限制 （单位：字节）
+
+
 machine_memory_bytes                    gauge       当前主机的内存总量
 container_network_receive_bytes_total   counter     容器网络累积接收数据总量（单位：字节）
 container_network_transmit_bytes_total  counter     容器网络累积传输数据总量（单位：字节）

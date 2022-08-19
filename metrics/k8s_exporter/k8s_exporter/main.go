@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
@@ -38,6 +39,14 @@ type config struct {
 type JsonResult struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
+}
+
+type k8sMonitor struct {
+	cpuDesc      *prometheus.Desc
+	memUsageDesc *prometheus.Desc
+	memLimitDesc *prometheus.Desc
+	fsUsageDesc  *prometheus.Desc
+	fsLimitDesc  *prometheus.Desc
 }
 
 var (
@@ -88,6 +97,71 @@ func init() {
 	prometheus.MustRegister(httpRequestDuration)
 }
 
+func NewK8sMonitor() *k8sMonitor {
+	return &k8sMonitor{
+		cpuDesc: prometheus.NewDesc(
+			"container_cpu_load_average_10s",
+			"Average load of container CPU over the past 10 seconds",
+			[]string{"job", "cluster", "namespace", "pod"},
+			prometheus.Labels{"item": "container_cpu_load_average_10s"},
+		),
+		memUsageDesc: prometheus.NewDesc(
+			"container_memory_usage_bytes",
+			"The current memory usage of the container (unit: bytes)",
+			[]string{"job", "cluster", "namespace", "pod"},
+			prometheus.Labels{"item": "container_memory_usage_bytes"},
+		),
+		memLimitDesc: prometheus.NewDesc(
+			"container_memory_max_usage_bytes",
+			"The maximum memory usage of the container (unit: bytes)",
+			[]string{"job", "cluster", "namespace", "pod"},
+			prometheus.Labels{"item": "container_memory_max_usage_bytes"},
+		),
+		fsUsageDesc: prometheus.NewDesc(
+			"container_fs_usage_bytes",
+			"The usage of the file system in the container (unit: bytes)",
+			[]string{"job", "cluster", "namespace", "pod"},
+			prometheus.Labels{"item": "container_fs_usage_bytes"},
+		),
+		fsLimitDesc: prometheus.NewDesc(
+			"container_fs_limit_bytes",
+			"The total amount of file system that the container can use (unit: bytes)",
+			[]string{"job", "cluster", "namespace", "pod"},
+			prometheus.Labels{"item": "container_fs_limit_bytes"},
+		),
+	}
+}
+
+func (h *k8sMonitor) Describe(ch chan<- *prometheus.Desc) {
+	ch <- h.cpuDesc
+	ch <- h.memUsageDesc
+	ch <- h.memLimitDesc
+	ch <- h.fsUsageDesc
+	ch <- h.fsLimitDesc
+}
+
+func (h *k8sMonitor) Collect(ch chan<- prometheus.Metric) {
+	memData := prometheusClient.GetMemData()
+	for _, value := range memData {
+		labelValue := []string{value.Job, value.Cluster, value.NameSpace, value.Pod}
+		tempValue := value.Value
+		switch value.Name {
+		case "container_cpu_load_average_10s":
+			ch <- prometheus.MustNewConstMetric(h.cpuDesc, prometheus.GaugeValue, tempValue, labelValue...)
+		case "container_memory_usage_bytes":
+			ch <- prometheus.MustNewConstMetric(h.memUsageDesc, prometheus.GaugeValue, tempValue, labelValue...)
+		case "container_memory_max_usage_bytes":
+			ch <- prometheus.MustNewConstMetric(h.memLimitDesc, prometheus.GaugeValue, tempValue, labelValue...)
+		case "container_fs_usage_bytes":
+			ch <- prometheus.MustNewConstMetric(h.fsUsageDesc, prometheus.GaugeValue, tempValue, labelValue...)
+		case "container_fs_limit_bytes":
+			ch <- prometheus.MustNewConstMetric(h.fsLimitDesc, prometheus.GaugeValue, tempValue, labelValue...)
+		default:
+			break
+		}
+	}
+}
+
 func parseFlags() *config {
 	cfg := &config{}
 	flag.StringVar(&cfg.listenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
@@ -103,7 +177,9 @@ func main() {
 	prometheusClient.Init(cfg.logLevel)
 	writer, reader := buildClients(cfg)
 	metricsPath := cfg.telemetryPath
-	http.Handle(metricsPath, timeHandler(metricsPath[1:], read(reader)))
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(NewK8sMonitor())
+	http.Handle(metricsPath, promhttp.HandlerFor(registry, promhttp.HandlerOpts{Registry: registry}))
 	http.Handle("/write", timeHandler("write", write(writer)))
 	http.Handle("/health", health(reader))
 	http.Handle("/", index(cfg))
@@ -208,23 +284,6 @@ func write(writer writer) http.Handler {
 		if err != nil {
 			prometheusClient.Warn("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
 		}
-
-	})
-}
-
-func read(reader reader) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req prompb.ReadRequest
-		var resp *prompb.ReadResponse
-		var err error
-		resp, err = reader.Read(&req)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/x-protobuf")
-		w.Header().Set("Content-Encoding", "snappy")
 
 	})
 }
