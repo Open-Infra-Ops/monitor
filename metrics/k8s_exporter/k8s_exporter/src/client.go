@@ -195,7 +195,7 @@ func (c *Client) Write(samples model.Samples) error {
 		t.Value = value
 		setMemData(t)
 		//temp := t.Job + "_" + t.Cluster + "_" + t.NameSpace + "_" + t.Pod + "_" + t.Name + "_" + strconv.FormatFloat(t.Value, 'E', -1, 64)
-		//Info("msg", "data:", "collect--->", temp)
+		//logs.Info("msg", "data:", "collect--->", temp)
 	}
 	return nil
 }
@@ -271,7 +271,6 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 			},
 		},
 	}
-	Debug("msg", "Returned response", "#timeseries", len(labelsToSeries))
 	return &resp, nil
 }
 

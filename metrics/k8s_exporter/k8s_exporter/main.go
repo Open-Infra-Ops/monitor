@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/astaxie/beego/logs"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io/ioutil"
 	"net/http"
@@ -166,7 +167,6 @@ func parseFlags() *config {
 	cfg := &config{}
 	flag.StringVar(&cfg.listenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.telemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
-	flag.StringVar(&cfg.logLevel, "log-level", "debug", "The log level to use [ \"error\", \"warn\", \"info\", \"debug\" ].")
 	envy.Parse("TS_PROM")
 	flag.Parse()
 	return cfg
@@ -174,7 +174,7 @@ func parseFlags() *config {
 
 func main() {
 	cfg := parseFlags()
-	prometheusClient.Init(cfg.logLevel)
+	prometheusClient.LogInit()
 	writer, reader := buildClients(cfg)
 	metricsPath := cfg.telemetryPath
 	registry := prometheus.NewRegistry()
@@ -183,11 +183,11 @@ func main() {
 	http.Handle("/write", timeHandler("write", write(writer)))
 	http.Handle("/health", health(reader))
 	http.Handle("/", index(cfg))
-	prometheusClient.Info("msg", "Starting up...")
-	prometheusClient.Info("msg", "Listening", "addr", cfg.listenAddr)
+	logs.Info("msg", "Starting up...")
+	logs.Info("msg", "Listening", "addr", cfg.listenAddr)
 	err := http.ListenAndServe(cfg.listenAddr, nil)
 	if err != nil {
-		prometheusClient.Error("msg", "Listen failure", "err", err)
+		logs.Error("msg", "Listen failure", "err", err)
 		os.Exit(1)
 	}
 }
@@ -212,7 +212,7 @@ type writer interface {
 type noOpWriter struct{}
 
 func (no *noOpWriter) Write(samples model.Samples) error {
-	prometheusClient.Debug("msg", "Noop writer", "num_samples", len(samples))
+	logs.Debug("msg", "Noop writer", "num_samples", len(samples))
 	return nil
 }
 
@@ -258,21 +258,21 @@ func write(writer writer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			prometheusClient.Error("msg", "Read error", "err", err.Error())
+			logs.Error("msg", "Read error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {
-			prometheusClient.Error("msg", "Decode error", "err", err.Error())
+			logs.Error("msg", "Decode error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		var req prompb.WriteRequest
 		if err := proto.Unmarshal(reqBuf, &req); err != nil {
-			prometheusClient.Error("msg", "Unmarshal error", "err", err.Error())
+			logs.Error("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -282,7 +282,7 @@ func write(writer writer) http.Handler {
 
 		err = sendSamples(writer, samples)
 		if err != nil {
-			prometheusClient.Warn("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
+			logs.Warn("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
 		}
 
 	})
@@ -299,7 +299,7 @@ func health(reader reader) http.Handler {
 		w.Header().Set("content-type", "text/json")
 		_, err = w.Write(msg)
 		if err != nil {
-			prometheusClient.Error("msg", "health api", "err", err.Error())
+			logs.Error("msg", "health api", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -318,7 +318,7 @@ func index(cfg *config) http.Handler {
 		</html>`
 		_, err := fmt.Fprintf(w, indexTemplates)
 		if err != nil {
-			prometheusClient.Error("msg", "index api", "err", err.Error())
+			logs.Error("msg", "index api", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

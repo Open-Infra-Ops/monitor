@@ -1,71 +1,47 @@
 package PrometheusClient
 
 import (
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/promlog"
-	"os"
+	"encoding/json"
+	"fmt"
+	"github.com/astaxie/beego/config"
+	"github.com/astaxie/beego/logs"
 )
 
-var (
-	// Application wide logger
-	logger log.Logger
-)
-
-type AllowedLevel struct {
-	s string
-	o level.Option
-}
-
-// Set updates the value of the allowed level.
-func (l *AllowedLevel) Set(s string) error {
-	switch s {
-	case "debug":
-		l.o = level.AllowDebug()
-	case "info":
-		l.o = level.AllowInfo()
-	case "warn":
-		l.o = level.AllowWarn()
-	case "error":
-		l.o = level.AllowError()
-	default:
-		return errors.Errorf("unrecognized log level %q", s)
+func InitLogger() (err error) {
+	BConfig, err := config.NewConfig("ini", "conf/app.conf")
+	if err != nil {
+		fmt.Println("config init error:", err.Error())
+		return
 	}
-	l.s = s
-	return nil
-}
-
-func New(al AllowedLevel) log.Logger {
-	l := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
-	l = level.NewFilter(l, al.o)
-	l = log.With(l, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
-	return l
-}
-
-func Init(logLevel string) {
-	allowedLevel := promlog.AllowedLevel{}
-	allowedLevel.Set(logLevel)
-	logConfig := promlog.Config{
-		Level: &allowedLevel,
+	maxlines, lerr := BConfig.Int64("log::maxlines")
+	if lerr != nil {
+		maxlines = 20000
 	}
-	logger = promlog.New(&logConfig)
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
-	logger = log.With(logger, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
+
+	logConf := make(map[string]interface{})
+	logConf["filename"] = BConfig.String("log::log_path")
+	level, _ := BConfig.Int("log::log_level")
+	logConf["level"] = level
+	logConf["maxlines"] = maxlines
+
+	confStr, err := json.Marshal(logConf)
+	if err != nil {
+		fmt.Println("marshal failed,err:", err.Error())
+		return
+	}
+	err = logs.SetLogger(logs.AdapterFile, string(confStr))
+	if err != nil {
+		fmt.Println("marshal failed,err:", err.Error())
+		return
+	}
+	logs.SetLogFuncCall(true)
+	return
 }
 
-func Debug(keyValues ...interface{}) {
-	level.Debug(logger).Log(keyValues...)
-}
-
-func Info(keyValues ...interface{}) {
-	level.Info(logger).Log(keyValues...)
-}
-
-func Warn(keyValues ...interface{}) {
-	level.Warn(logger).Log(keyValues...)
-}
-
-func Error(keyValues ...interface{}) {
-	level.Error(logger).Log(keyValues...)
+func LogInit() {
+	err := InitLogger()
+	if err != nil {
+		fmt.Println(err)
+	}
+	logs.Info("log init success !")
 }

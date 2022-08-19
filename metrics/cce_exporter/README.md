@@ -16,7 +16,7 @@ docker build -t cce_exporter:v1.0 .
 2.设置全局变量
 
 ~~~bash
-启动容器之前需要设置全局变量：
+启动容器之前需要设置全局变量:
 kafka_server="192.168.1.235:9092,192.168.1.196:9092,192.168.1.228:9092" # kafka的集群ip
 kafka_topic="aom-metrics" # kafka监听的topic
 kafka_consumer_id="comsumer-aom-metrics" # kafka的消费id, 随便填，但是不能和其他的消费id重复。
