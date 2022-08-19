@@ -165,7 +165,7 @@ func (h *k8sMonitor) Collect(ch chan<- prometheus.Metric) {
 
 func parseFlags() *config {
 	cfg := &config{}
-	flag.StringVar(&cfg.listenAddr, "web-listen-address", ":9201", "Address to listen on for web endpoints.")
+	flag.StringVar(&cfg.listenAddr, "web-listen-address", "0.0.0.0:9201", "Address to listen on for web endpoints.")
 	flag.StringVar(&cfg.telemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
 	envy.Parse("TS_PROM")
 	flag.Parse()

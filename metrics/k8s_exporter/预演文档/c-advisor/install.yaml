@@ -1,15 +1,15 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: monitoring
+  name: infra-monitoring
   labels:
-    name: monitoring
+    name: infra-monitoring
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: prometheus
-  namespace: monitoring
+  namespace: infra-monitoring
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
@@ -23,13 +23,13 @@ rules:
       - services
       - endpoints
       - pods
-    verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [ "" ]
     resources:
       - configmaps
-    verbs: ["get"]
-  - nonResourceURLs: ["/metrics"]
-    verbs: ["get"]
+    verbs: [ "get" ]
+  - nonResourceURLs: [ "/metrics" ]
+    verbs: [ "get" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
@@ -42,7 +42,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: prometheus
-    namespace: monitoring
+    namespace: infra-monitoring
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -53,25 +53,25 @@ roleRef:
   kind: ClusterRole
   name: prometheus
 subjects:
-- kind: ServiceAccount
-  name: prometheus
-  namespace: monitoring
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: infra-monitoring
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: prometheus-config
-  namespace: monitoring
+  namespace: infra-monitoring
 data:
   prometheus.yml: |
     global:
-      scrape_interval:     15s
-      evaluation_interval: 15s
+      scrape_interval:     10s
+      evaluation_interval: 10s
       external_labels:
-        cluster: k8s-cluster
+        cluster: zc-cluster
     
     scrape_configs:
-      - job_name: 'hwstaff_beijing4'
+      - job_name: 'hwstaff00223369_beijing4'
         scheme: https
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
@@ -94,7 +94,7 @@ data:
             action: replace
             target_label: node_name
     remote_write:
-      - url: "http://192.168.1.51:9201/write"
+      - url: "http://192.168.1.115:32000/write"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -102,7 +102,7 @@ metadata:
   labels:
     app: prometheus
   name: prometheus
-  namespace: monitoring
+  namespace: infra-monitoring
 spec:
   replicas: 1
   selector:
@@ -115,38 +115,107 @@ spec:
     spec:
       serviceAccountName: prometheus
       containers:
-      - name: prometheus
-        image: prom/prometheus:v2.2.1
-        command:
-        - "/bin/prometheus"
-        args:
-        - "--config.file=/etc/prometheus/prometheus.yml"
-        ports:
-        - containerPort: 9090
-          protocol: TCP
-          name: http
-        volumeMounts:
-        - mountPath: "/etc/prometheus"
-          name: prometheus-config
+        - name: prometheus
+          image: prom/prometheus:v2.2.1
+          command:
+            - "/bin/prometheus"
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention=1d"
+          ports:
+            - containerPort: 9090
+              protocol: TCP
+              name: http
+          volumeMounts:
+            - mountPath: "/etc/prometheus"
+              name: prometheus-config
       volumes:
-      - name: prometheus-config
-        configMap:
-          name: prometheus-config
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: prometheus
-  namespace: monitoring
+  namespace: infra-monitoring
   labels:
     app: prometheus
 spec:
   ports:
-  - name: web
-    nodePort: 31000
-    port: 9090
-    targetPort: http
+    - name: web
+      nodePort: 31000
+      port: 9090
+      targetPort: http
   selector:
     app: prometheus
   type: NodePort
-
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: k8s-exporter
+  name: k8s-exporter
+  namespace: infra-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-exporter
+  template:
+    metadata:
+      labels:
+        app: k8s-exporter
+    spec:
+      containers:
+        - name: k8s-exporter
+          image: prom/k8s_exporter:v1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9201
+              protocol: TCP
+              name: http2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-exporter
+  namespace: infra-monitoring
+  labels:
+    app: k8s-exporter
+spec:
+  ports:
+    - name: web2
+      nodePort: 32000
+      port: 9201
+      targetPort: 9201
+  selector:
+    app: k8s-exporter
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: k8s-prometheus-agent
+  name: k8s-prometheus-agent
+  namespace: infra-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-prometheus-agent
+  template:
+    metadata:
+      labels:
+        app: k8s-prometheus-agent
+    spec:
+      containers:
+        - name: k8s-prometheus-agent
+          image: pambrose/prometheus-agent:1.13.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AGENT_CONFIG
+              value: "https://raw.githubusercontent.com/Open-Infra-Ops/monitor/main/prometheus-agent/prometheus-proxy-agent.conf"
