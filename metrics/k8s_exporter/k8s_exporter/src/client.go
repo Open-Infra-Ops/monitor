@@ -9,7 +9,6 @@ import (
 	"math"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -195,8 +194,8 @@ func (c *Client) Write(samples model.Samples) error {
 		}
 		t.Value = value
 		setMemData(t)
-		temp := t.Job + "_" + t.Cluster + "_" + t.NameSpace + "_" + t.Pod + "_" + t.Name + "_" + strconv.FormatFloat(t.Value, 'E', -1, 64)
-		Info("msg", "data:", "collect--->", temp)
+		//temp := t.Job + "_" + t.Cluster + "_" + t.NameSpace + "_" + t.Pod + "_" + t.Name + "_" + strconv.FormatFloat(t.Value, 'E', -1, 64)
+		//Info("msg", "data:", "collect--->", temp)
 	}
 	return nil
 }
