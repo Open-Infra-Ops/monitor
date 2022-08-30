@@ -109,7 +109,11 @@ func parseMetric(m model.Metric) MonItem {
 func checkName(name string) bool {
 	isCheckOk := false
 	switch name {
-	case "container_cpu_load_average_10s":
+	case "container_cpu_usage_seconds_total":
+		isCheckOk = true
+	case "container_spec_cpu_quota":
+		isCheckOk = true
+	case "container_spec_cpu_period":
 		isCheckOk = true
 	case "container_memory_usage_bytes":
 		isCheckOk = true

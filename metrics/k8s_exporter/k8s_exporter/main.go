@@ -100,11 +100,23 @@ func init() {
 
 func NewK8sMonitor() *k8sMonitor {
 	return &k8sMonitor{
-		cpuDesc: prometheus.NewDesc(
-			"container_cpu_load_average_10s",
-			"Average load of container CPU over the past 10 seconds",
+		usageCpuSecondsDesc: prometheus.NewDesc(
+			"container_cpu_usage_seconds_total",
+			"The usage seconds total of the container (unit: s)",
 			[]string{"job", "cluster", "namespace", "pod"},
-			prometheus.Labels{"item": "container_cpu_load_average_10s"},
+			prometheus.Labels{"item": "container_cpu_usage_seconds_total"},
+		),
+		specCpuQuotaDesc: prometheus.NewDesc(
+			"container_spec_cpu_quota",
+			"The spec cpu quota of the container (unit: s)",
+			[]string{"job", "cluster", "namespace", "pod"},
+			prometheus.Labels{"item": "container_spec_cpu_quota"},
+		),
+		specCpuPeriodDesc: prometheus.NewDesc(
+			"container_spec_cpu_period",
+			"The spec cpu period of the container (unit: s)",
+			[]string{"job", "cluster", "namespace", "pod"},
+			prometheus.Labels{"item": "container_spec_cpu_period"},
 		),
 		memUsageDesc: prometheus.NewDesc(
 			"container_memory_usage_bytes",
@@ -134,7 +146,9 @@ func NewK8sMonitor() *k8sMonitor {
 }
 
 func (h *k8sMonitor) Describe(ch chan<- *prometheus.Desc) {
-	ch <- h.cpuDesc
+	ch <- h.usageCpuSecondsDesc
+	ch <- h.specCpuQuotaDesc
+	ch <- h.specCpuPeriodDesc
 	ch <- h.memUsageDesc
 	ch <- h.memLimitDesc
 	ch <- h.fsUsageDesc
@@ -147,8 +161,12 @@ func (h *k8sMonitor) Collect(ch chan<- prometheus.Metric) {
 		labelValue := []string{value.Job, value.Cluster, value.NameSpace, value.Pod}
 		tempValue := value.Value
 		switch value.Name {
-		case "container_cpu_load_average_10s":
-			ch <- prometheus.MustNewConstMetric(h.cpuDesc, prometheus.GaugeValue, tempValue, labelValue...)
+		case "container_cpu_usage_seconds_total":
+			ch <- prometheus.MustNewConstMetric(h.usageCpuSecondsDesc, prometheus.GaugeValue, tempValue, labelValue...)
+		case "container_spec_cpu_quota":
+			ch <- prometheus.MustNewConstMetric(h.specCpuQuotaDesc, prometheus.GaugeValue, tempValue, labelValue...)
+		case "container_spec_cpu_period":
+			ch <- prometheus.MustNewConstMetric(h.specCpuPeriodDesc, prometheus.GaugeValue, tempValue, labelValue...)
 		case "container_memory_usage_bytes":
 			ch <- prometheus.MustNewConstMetric(h.memUsageDesc, prometheus.GaugeValue, tempValue, labelValue...)
 		case "container_memory_max_usage_bytes":
