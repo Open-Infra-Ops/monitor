@@ -3,7 +3,6 @@
 # @Author  : Tom_zc
 # @FileName: cce_exporter.py
 # @Software: PyCharm
-import math
 import re
 import yaml
 import requests
@@ -104,14 +103,17 @@ class CollectMetric(object):
 
     @classmethod
     def loop_collect_data(cls, node_info):
-        logger.info("[loop_collect_data] start to collect data")
-        node_len = len(node_info)
-        if node_len > 10:
-            node_len = 10
-        executor = cls.get_thread_pool_handler(node_len)
-        all_task = [executor.submit(cls.query_data, (node_temp["node_name"], node_temp["node_ip"])) for node_temp in
-                    node_info]
-        wait(all_task, return_when=ALL_COMPLETED)
+        try:
+            logger.info("[loop_collect_data] start to collect data")
+            node_len = len(node_info)
+            if node_len > 10:
+                node_len = 10
+            executor = cls.get_thread_pool_handler(node_len)
+            all_task = [executor.submit(cls.query_data, (node_temp["node_name"], node_temp["node_ip"])) for node_temp in
+                        node_info]
+            wait(all_task, return_when=ALL_COMPLETED)
+        except Exception as e:
+            logger.error("[loop_collect_data] {}".format(e))
 
     @classmethod
     def init_task(cls, config_info):
@@ -163,6 +165,7 @@ class InitProgress(object):
         InitProgress.check_yaml_config(config_info)
         return config_info
 
+    # noinspection DuplicatedCode
     @staticmethod
     def init_logger(config_info):
         global logger

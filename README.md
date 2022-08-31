@@ -8,12 +8,9 @@
 
 ​		当前运维监控主要有两种类型，华为云的ECS，CCE，裸金属。
 
-​		对于ECS和裸金属，主要是通过node_exporter获取cpu，内存，硬盘总容量，硬盘使用容量，并将数据暴露给prometheus。
+​		对于ECS和裸金属，主要是通过node_exporter获取cpu，内存，硬盘总容量，硬盘使用容量；ecs_exporter去各个节点上获取数据，并通过nginx暴露给prometheus。
 
-​		对于CCE，监控以容器为单位获取cpu, 内存，硬盘总容量，硬盘剩余容量；主要有两种方法实现：
-
-+ 通过华为云自有的AOM模块向kafka数据上报，cce_exporter监听对应kafka的topic，并将数据暴露给prometheus；但是存在限制条件： 只能使用华为云的kafka实例。
-+ 通过c-advisor对接prometheus，再通过prometheus的rewriter将数据导出到k8s_exporter，k8s_exporter再将数据暴露给prometheus。
+​		对于CCE，监控以容器为单位获取cpu, 内存，硬盘总容量，硬盘剩余容量；通过c-advisor对接prometheus，再通过prometheus的rewriter将数据导出到k8s_exporter，k8s_exporter再将数据通过nginx暴露给prometheus。
 
 ## 3.解决方案
 
@@ -23,44 +20,20 @@
 
 ECS/裸金属:
 
-​	node_exporter： 使用rpm包的方式进行安装
+​	node_exporter： 使用rpm包的方式进行安装。细配置文件见metrics/node_exporter文件夹。
 
-​    prometheus-agent:  使用容器的方式部署该服务
+​    ecs_exporter:  通过脚本进行安装。细配置文件见metrics/ecs_exporter文件夹。
 
-CCE_方案一:
+​	nginx: 直接安装官方的软件。详细配置文件见nginx/ecs文件夹。
 
-​	kafka： 在cce集群部署kafka集群。
+K8S集群:
 
-​	cce_exporter： 在cce集群部署cce_exporter服务。
+​	prometheus： 在cce集群部署prometheus。详细配置文件见metrics/k8s_exporter/prometheus文件夹。
 
-​	prometheus-agent:  在cce集群中部署prometheus-agent该服务
+​	k8s_exporter： 在cce集群部署k8s_exporter。详细配置文件见metrics/k8s_exporter/k8s_exporter文件夹。
 
-CCE_方案二:
-
-​	prometheus： 在cce集群部署prometheus。
-
-​	k8s_exporter： 在cce集群部署k8s_exporter。
-
-​	prometheus-agent:  在cce集群中部署prometheus-agent该服务
+​	nginx: 直接安装官方的软件。详细配置文件见nginx/k8s文件夹。
 
 服务点：
 
-​	prometheus： 在cce集群中部署prometheus服务。
-
-​    prometheus-proxy:  在cce集群中部署prometheus-proxy该服务。
-
-具体方案见：
-
-​    kafka见kafka(kafka只能用华为云的kafka实例)
-
-​	node_exporter见metrics/node_exporter
-
-​    cce_exporter见metrics/cce_exporter
-
-​    k8s_exporter见metrics/k8s_exporter
-
-​    prometheus-agent见prometheus-agent
-
-​    prometheus-proxy见prometheus-proxy
-
-​    prometheus见prometheus
+​	prometheus： 在cce集群中部署prometheus服务。详细配置文件见prometheus文件夹。

@@ -25,20 +25,23 @@ global:
   scrape_timeout: 120s
 
 scrape_configs:
-  - job_name: node_exporter_node10     # 针对于不同集群的同名的节点，可以修改job_name来做唯一性
-    metrics_path: "/metrics_node10"    # promtheus-proxy设置的路径
+  - job_name: ecs_account_zone_node10     # 针对于不同集群的同名的节点，可以修改job_name来做唯一性
+    metrics_path: "/metrics"    # promtheus-proxy设置的路径
+    basic_auth:
+      username: *****  # 这里填nginx设置的用户名
+      password: *****  # 这里填nginx设置的用户名对应的密码
+    scheme: https
     static_configs:
-      - targets: ['tomtoworld.xyz:8080']  # promtheus-proxy设置的ip.
+      - targets: ["tomtoworld.xyz"]
 
-  - job_name: node_exporter_node11
-    metrics_path: "/metrics_node11"
+  - job_name: k8s_account_zone_cluster
+    metrics_path: "/metrics"
     basic_auth:
       username: *****
       password: *****
     scheme: https
     static_configs:
       - targets: ["tomtoworld.xyz"]
-
 ~~~
 
 
