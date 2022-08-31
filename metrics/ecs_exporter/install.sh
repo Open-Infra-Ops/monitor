@@ -37,7 +37,8 @@ if [ ! -f $etc_path"/ecs_exporter.yaml" ]; then
 fi
 if [ ! -f $service_path"/ecs_exporter.service" ]; then
   cp $cur_path"/ecs_exporter.service" $service_path"/ecs_exporter.service"
-  chmod 755 $service_path"/ecs_exporter.service"
 fi
 systemctl enable ecs_exporter.service
+systemctl start ecs_exporter.service
+echo "The service of ecs_exporter install successfully"
 

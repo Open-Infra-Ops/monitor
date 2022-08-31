@@ -183,7 +183,7 @@ def metrics():
     <html>
         <head><title>ECS Exporter</title></head>
         <body>
-            <h1>CCE Exporter</h1>
+            <h1>ECS Exporter</h1>
             <p><a href='/metrics'>Metrics</a></p>
         </body>
     </html>'''

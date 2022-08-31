@@ -6,6 +6,7 @@ etc_path="/etc/ecs_exporter"
 service_path="/usr/lib/systemd/system"
 
 # remove
+systemctl stop ecs_exporter.service
 rm -rf $bin_path
 rm -rf $log_path
 rm -rf $etc_path
