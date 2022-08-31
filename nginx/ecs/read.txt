@@ -1,0 +1,15 @@
+参考ecs的处理机制
+
+1.nginx自签名证书
+openssl req -x509 -nodes -days 36500 -newkey rsa:2048 -keyout /etc/nginx/cert/server.key -out /etc/nginx/cert/server.crt
+
+2.生成用户名和密码
+yum install -y httpd-tools
+htpasswd -c /etc/nginx/conf.d/passwd.dat username
+
+3.配置nginx, 将对应的nginx.conf放在/etc/nginx/
+
+4.启动nginx
+
+
+

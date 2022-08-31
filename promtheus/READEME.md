@@ -32,8 +32,12 @@ scrape_configs:
 
   - job_name: node_exporter_node11
     metrics_path: "/metrics_node11"
+    basic_auth:
+      username: *****
+      password: *****
+    scheme: https
     static_configs:
-      - targets: ['tomtoworld.xyz:8080']
+      - targets: ["tomtoworld.xyz"]
 
 ~~~
 

@@ -199,23 +199,50 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: k8s-prometheus-agent
-  name: k8s-prometheus-agent
+    app: nginx
+  name: nginx-deployment
   namespace: infra-monitoring
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: k8s-prometheus-agent
+      app: nginx
   template:
     metadata:
       labels:
-        app: k8s-prometheus-agent
+        app: nginx
     spec:
       containers:
-        - name: k8s-prometheus-agent
-          image: pambrose/prometheus-agent:1.13.0
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: AGENT_CONFIG
-              value: "https://github.com/Open-Infra-Ops/monitor/raw/main/prometheus-agent/conf/k8s_account_zone_cluster.conf"
+      - image: nginx:1.14.0
+        name: nginx
+        volumeMounts:
+        - name: conf
+          mountPath: /etc/nginx
+        - name: opt
+          mountPath: /opt
+      volumes:
+      - name: conf
+        hostPath:
+          path: /etc/nginx
+          type: Directory
+      - name: opt
+        hostPath:
+          path: /opt
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: nginx
+  name: nginx-deployment
+spec:
+  ports:
+  - port: 80
+    name: nginx-service80
+    protocol: TCP
+    targetPort: 80
+    nodePort: 32320
+  selector:
+    app: nginx
+  type: NodePort

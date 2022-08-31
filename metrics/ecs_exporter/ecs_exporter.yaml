@@ -1,0 +1,8 @@
+interval: 10  # unit: s
+service_port: 8000
+#log_path: /var/log/ecs_exporter/
+log_path: ./
+node_info:
+  - node_name: node_10
+    node_ip: 43.154.162.239
+
