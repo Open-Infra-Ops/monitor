@@ -10,3 +10,4 @@ rm -rf $bin_path
 rm -rf $log_path
 rm -rf $etc_path
 rm -rf $service_path"/ecs_exporter.service"
+rm -rf /usr/bin/ecs_exporter

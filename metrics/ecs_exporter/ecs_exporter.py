@@ -1,15 +1,16 @@
+#! /usr/bin/python3
 # -*- coding: utf-8 -*-
 # @Time    : 2022/7/14 17:15
 # @Author  : Tom_zc
 # @FileName: cce_exporter.py
 # @Software: PyCharm
+import datetime
 import re
 import yaml
 import requests
 import logging
 import os
-
-from concurrent.futures import ThreadPoolExecutor, wait, ALL_COMPLETED
+import asyncio
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, Response
 from threading import Lock
@@ -19,7 +20,7 @@ from logging.handlers import RotatingFileHandler
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 APP = Flask(__name__)
-
+loop = asyncio.get_event_loop()
 logger = logging.getLogger('cce_exporter')
 
 
@@ -52,6 +53,40 @@ class MetricData(object):
         return content_str
 
 
+# noinspection DuplicatedCode
+async def collect_node_data(node_name, node_ip):
+    node_name = node_name.strip()
+    content = str()
+    try:
+        url = GlobalConfig.collect_url.format(node_ip)
+        ret = requests.get(url, timeout=(10, 10))
+        if not str(ret.status_code).startswith("2"):
+            raise Exception("get url:{} failed, code:{}".format(url, ret.status_code))
+        content = ret.content.decode("utf-8")
+    except Exception as e:
+        logger.error("[query_data] {}".format(e))
+    content_list = content.split("\n")
+    ret_content = list()
+    filed = 'node_name="{}",'.format(node_name)
+    for content in content_list:
+        if content.startswith("promhttp"):
+            continue
+        elif content.startswith("# HELP promhttp"):
+            continue
+        elif content.startswith("# TYPE promhttp"):
+            continue
+        elif content.startswith("node_memory_MemUsed"):
+            content_line_list = content.split("node_memory_MemUsed")
+            content = r'node_memory_MemUsed{%s}%s' % (filed[0:-1], content_line_list[-1])
+        elif not content.startswith("#"):
+            char_index = content.find(r"{")
+            if char_index != -1:
+                content = content[:char_index + 1] + filed + content[char_index + 1:]
+        ret_content.append(content)
+    collect_data_dict = {node_name: "\n".join(ret_content)}
+    MetricData.set(collect_data_dict)
+
+
 class CollectMetric(object):
     _lock = Lock()
     _instance = None
@@ -67,58 +102,20 @@ class CollectMetric(object):
         super(CollectMetric, self).__init__(*args, **kwargs)
 
     @classmethod
-    def get_thread_pool_handler(cls, max_workers=2):
-        if cls._executor is None:
-            cls._executor = ThreadPoolExecutor(max_workers=max_workers)
-        return cls._executor
-
-    @classmethod
-    def query_data(cls, node_name, node_ip):
-        content = str()
-        try:
-            url = GlobalConfig.collect_url.format(node_ip)
-            ret = requests.get(url, timeout=(10, 10))
-            if not str(ret.status_code).startswith("2"):
-                raise Exception("get url:{} failed, code:{}".format(url, ret.status_code))
-            content = ret.content.decode("utf-8")
-        except Exception as e:
-            logger.error("[query_data] {}".format(e))
-        content_list = content.split("\n")
-        ret_content = list()
-        for content in content_list:
-            if content.startswith("promhttp"):
-                continue
-            elif content.startswith("# HELP promhttp"):
-                continue
-            elif content.startswith("# TYPE promhttp"):
-                continue
-            elif not content.startswith("#"):
-                char_index = content.find(r"{")
-                if char_index != -1:
-                    filed = 'node_name="{}",'.format(node_name)
-                    content = content[:char_index + 1] + filed + content[char_index + 1:]
-            ret_content.append(content)
-        collect_data_dict = {node_name, "\n".join(ret_content)}
-        MetricData.set(collect_data_dict)
-
-    @classmethod
     def loop_collect_data(cls, node_info):
         try:
+            global loop
             logger.info("[loop_collect_data] start to collect data")
-            node_len = len(node_info)
-            if node_len > 10:
-                node_len = 10
-            executor = cls.get_thread_pool_handler(node_len)
-            all_task = [executor.submit(cls.query_data, (node_temp["node_name"], node_temp["node_ip"])) for node_temp in
-                        node_info]
-            wait(all_task, return_when=ALL_COMPLETED)
+            coroutine_task = [collect_node_data(node_temp["node_name"], node_temp["node_ip"]) for node_temp in
+                              node_info]
+            loop.run_until_complete(asyncio.wait(coroutine_task))
         except Exception as e:
             logger.error("[loop_collect_data] {}".format(e))
 
     @classmethod
     def init_task(cls, config_info):
         cls._apscheduler.add_job(cls.loop_collect_data, 'interval', args=(config_info["node_info"],),
-                                 seconds=config_info["interval"])
+                                 seconds=config_info["interval"], next_run_time=datetime.datetime.now())
         cls._apscheduler.start()
 
 
@@ -126,6 +123,7 @@ class InitProgress(object):
 
     @staticmethod
     def is_ip(ip_str):
+        ip_str = ip_str.split(":")[0]
         p = re.compile('^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$')
         if p.match(ip_str):
             return True
@@ -176,13 +174,7 @@ class InitProgress(object):
                                                backupCount=10)
         size_rotate_file.setFormatter(formatter)
         size_rotate_file.setLevel(logging.INFO)
-
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(level=logging.INFO)
-        console_handler.setFormatter(formatter)
-
         logger.addHandler(size_rotate_file)
-        logger.addHandler(console_handler)
 
 
 @APP.route("/")

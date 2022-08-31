@@ -5,8 +5,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=ecs_exporter
-ExecStart=python3 /opt/ecs_exporter/ecs_exporter.py
+ExecStart=/usr/bin/ecs_exporter
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 TimeoutStopSec=20s
