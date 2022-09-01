@@ -33,6 +33,7 @@ type MonItem struct {
 	NameSpace string
 	Pod       string
 	Name      string
+	Container string
 	Value     float64
 	Info      map[string]string
 }
@@ -75,6 +76,7 @@ func parseMetric(m model.Metric) MonItem {
 		NameSpace: "",
 		Pod:       "",
 		Name:      "",
+		Container: "",
 		Value:     0,
 		Info:      nil,
 	}
@@ -100,6 +102,11 @@ func parseMetric(m model.Metric) MonItem {
 		}
 		if pod, ok := labelStrings["pod"]; ok {
 			item.Pod = pod
+		}
+		if container, ok := labelStrings["name"]; ok {
+			if container != "POD" {
+				item.Container = container
+			}
 		}
 		return item
 	}
@@ -159,6 +166,12 @@ func checkParam(t MonItem) bool {
 	if t.Name == "" {
 		return false
 	}
+	if t.Container == "" {
+		return false
+	}
+	if t.Container == t.Name {
+		return false
+	}
 	return true
 }
 
@@ -166,7 +179,7 @@ func checkParam(t MonItem) bool {
 func setMemData(t MonItem) {
 	RwMutex.Lock()
 	defer RwMutex.Unlock()
-	mapKey := t.Job + "_" + t.Cluster + "_" + t.NameSpace + "_" + t.Pod + "_" + t.Name
+	mapKey := t.Job + "_" + t.Cluster + "_" + t.NameSpace + "_" + t.Pod + "_" + t.Container + "_" + t.Name
 	MemData[mapKey] = t
 }
 

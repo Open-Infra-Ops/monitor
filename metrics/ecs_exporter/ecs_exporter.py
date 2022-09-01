@@ -5,15 +5,18 @@
 # @FileName: cce_exporter.py
 # @Software: PyCharm
 import datetime
+import json
 import re
+import time
 import yaml
 import requests
 import logging
 import os
 import asyncio
-from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, Response
 from threading import Lock
+from kafka import KafkaProducer
+from apscheduler.schedulers.background import BackgroundScheduler
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from logging.handlers import RotatingFileHandler
 
@@ -21,23 +24,24 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 APP = Flask(__name__)
 loop = asyncio.get_event_loop()
-logger = logging.getLogger('cce_exporter')
+logger = logging.getLogger('ecs_exporter')
 
 
 class GlobalConfig(object):
-    config_path = "/etc/ecs_exporter/ecs_exporter.yaml"
+    # config_path = "/etc/ecs_exporter/ecs_exporter.yaml"
+    config_path = "./ecs_exporter.yaml"
     collect_url = "http://{}/metrics"
     default_log_name = "ecs_exporter.log"
 
 
 class MetricData(object):
-    _cur_metrics_data = dict()  # {"node_name": "content"}
+    _cur_metrics_data = list()
     _lock = Lock()
 
     @classmethod
     def set(cls, metrics_data):
         with cls._lock:
-            cls._cur_metrics_data.update(metrics_data)
+            cls._cur_metrics_data.extend(metrics_data)
 
     @classmethod
     def get(cls):
@@ -47,10 +51,7 @@ class MetricData(object):
     @classmethod
     def get_all_content(cls):
         all_content_dict = cls.get()
-        content_str = str()
-        for _, content in all_content_dict.items():
-            content_str = "{}{}".format(content_str, content)
-        return content_str
+        return json.dumps(all_content_dict)
 
 
 # noinspection DuplicatedCode
@@ -67,24 +68,47 @@ async def collect_node_data(node_name, node_ip):
         logger.error("[query_data] {}".format(e))
     content_list = content.split("\n")
     ret_content = list()
-    filed = 'node_name="{}",'.format(node_name)
     for content in content_list:
+        items_dict = {"node_name": node_name}
         if content.startswith("promhttp"):
             continue
-        elif content.startswith("# HELP promhttp"):
+        elif content.startswith("#"):
             continue
-        elif content.startswith("# TYPE promhttp"):
+        elif not content:
             continue
-        elif content.startswith("node_memory_MemUsed"):
-            content_line_list = content.split("node_memory_MemUsed")
-            content = r'node_memory_MemUsed{%s}%s' % (filed[0:-1], content_line_list[-1])
-        elif not content.startswith("#"):
-            char_index = content.find(r"{")
-            if char_index != -1:
-                content = content[:char_index + 1] + filed + content[char_index + 1:]
-        ret_content.append(content)
-    collect_data_dict = {node_name: "\n".join(ret_content)}
-    MetricData.set(collect_data_dict)
+        else:
+            content_temp_list = content.split(r"{")
+            if len(content_temp_list) > 1:
+                remain_list = content_temp_list[-1].split(r"}")
+
+                items_list = remain_list[0].split(",")
+                for items in items_list:
+                    items_temp = items.split("=")
+                    items_dict[items_temp[0]] = items_temp[1]
+                dict_data = {
+                    "metrics": content_temp_list[0],
+                    "items": items_dict,
+                    "value": remain_list[-1].strip(),
+                    "time": time.time()
+                }
+                ret_content.append(dict_data)
+            elif len(content_temp_list) == 1:
+                items_list = content_temp_list[0].split()
+                print("*****************")
+                print(items_list)
+                print(content_temp_list)
+                print(content)
+                dict_data = {
+                    "metrics": items_list[0],
+                    "items": items_dict,
+                    "value": items_list[-1].strip(),
+                    "time": time.time()
+                }
+                ret_content.append(dict_data)
+            else:
+                logger.info("[collect_node_data] invalid data:{}".format(content))
+    print(ret_content)
+    return ret_content
 
 
 class CollectMetric(object):
@@ -102,19 +126,30 @@ class CollectMetric(object):
         super(CollectMetric, self).__init__(*args, **kwargs)
 
     @classmethod
-    def loop_collect_data(cls, node_info):
+    def loop_collect_data(cls, config_info, consumer):
+        global loop
         try:
-            global loop
+            node_info = config_info["node_info"]
+            topic_name = config_info["kafka_topic_name"]
             logger.info("[loop_collect_data] start to collect data")
             coroutine_task = [collect_node_data(node_temp["node_name"], node_temp["node_ip"]) for node_temp in
                               node_info]
-            loop.run_until_complete(asyncio.wait(coroutine_task))
+            ret_tuple = loop.run_until_complete(asyncio.wait(coroutine_task))
+            ret_list = list()
+            for i in list(ret_tuple[0]):
+                ret_list.extend(i.result())
+            ret_str = json.dumps(ret_list)
+            # data = bytes(ret_str, encodings="utf-8")
+            data = bytes(ret_str)
+            consumer.send(topic_name, data)
         except Exception as e:
             logger.error("[loop_collect_data] {}".format(e))
 
     @classmethod
     def init_task(cls, config_info):
-        cls._apscheduler.add_job(cls.loop_collect_data, 'interval', args=(config_info["node_info"],),
+        kafka_server_list = config_info["kafka_server"].split(",")
+        consumer = KafkaProducer(bootstrap_servers=kafka_server_list)
+        cls._apscheduler.add_job(cls.loop_collect_data, 'interval', args=(config_info, consumer),
                                  seconds=config_info["interval"], next_run_time=datetime.datetime.now())
         cls._apscheduler.start()
 
@@ -147,6 +182,12 @@ class InitProgress(object):
             raise Exception("[check_yaml_config] invalid log_path")
         if not os.path.exists(config["log_path"]):
             raise Exception("[check_yaml_config] invalid log_path")
+        if not config.get("kafka_server"):
+            raise Exception("[check_yaml_config] invalid kafka_server")
+        if not config.get("kafka_topic_name"):
+            raise Exception("[check_yaml_config] invalid kafka_topic_name")
+        if not config.get("kafka_consumer_id"):
+            raise Exception("[check_yaml_config] invalid kafka_consumer_id")
         if not config.get("node_info") or not isinstance(config["node_info"], list):
             raise Exception("[check_yaml_config] invalid node_info")
         for node_temp in config["node_info"]:
@@ -194,7 +235,7 @@ def metrics():
 def collect_metrics():
     content = MetricData.get_all_content()
     resp = Response(content)
-    resp.headers['Content-Type'] = 'text/plain'
+    resp.headers['Content-Type'] = 'application/json'
     return resp
 
 

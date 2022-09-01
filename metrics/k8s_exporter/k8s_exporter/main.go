@@ -43,11 +43,13 @@ type JsonResult struct {
 }
 
 type k8sMonitor struct {
-	cpuDesc      *prometheus.Desc
-	memUsageDesc *prometheus.Desc
-	memLimitDesc *prometheus.Desc
-	fsUsageDesc  *prometheus.Desc
-	fsLimitDesc  *prometheus.Desc
+	usageCpuSecondsDesc *prometheus.Desc
+	specCpuQuotaDesc    *prometheus.Desc
+	specCpuPeriodDesc   *prometheus.Desc
+	memUsageDesc        *prometheus.Desc
+	memLimitDesc        *prometheus.Desc
+	fsUsageDesc         *prometheus.Desc
+	fsLimitDesc         *prometheus.Desc
 }
 
 var (
@@ -103,43 +105,43 @@ func NewK8sMonitor() *k8sMonitor {
 		usageCpuSecondsDesc: prometheus.NewDesc(
 			"container_cpu_usage_seconds_total",
 			"The usage seconds total of the container (unit: s)",
-			[]string{"job", "cluster", "namespace", "pod"},
+			[]string{"job", "cluster", "namespace", "pod", "container"},
 			prometheus.Labels{"item": "container_cpu_usage_seconds_total"},
 		),
 		specCpuQuotaDesc: prometheus.NewDesc(
 			"container_spec_cpu_quota",
 			"The spec cpu quota of the container (unit: s)",
-			[]string{"job", "cluster", "namespace", "pod"},
+			[]string{"job", "cluster", "namespace", "pod", "container"},
 			prometheus.Labels{"item": "container_spec_cpu_quota"},
 		),
 		specCpuPeriodDesc: prometheus.NewDesc(
 			"container_spec_cpu_period",
 			"The spec cpu period of the container (unit: s)",
-			[]string{"job", "cluster", "namespace", "pod"},
+			[]string{"job", "cluster", "namespace", "pod", "container"},
 			prometheus.Labels{"item": "container_spec_cpu_period"},
 		),
 		memUsageDesc: prometheus.NewDesc(
 			"container_memory_usage_bytes",
 			"The current memory usage of the container (unit: bytes)",
-			[]string{"job", "cluster", "namespace", "pod"},
+			[]string{"job", "cluster", "namespace", "pod", "container"},
 			prometheus.Labels{"item": "container_memory_usage_bytes"},
 		),
 		memLimitDesc: prometheus.NewDesc(
 			"container_memory_max_usage_bytes",
 			"The maximum memory usage of the container (unit: bytes)",
-			[]string{"job", "cluster", "namespace", "pod"},
+			[]string{"job", "cluster", "namespace", "pod", "container"},
 			prometheus.Labels{"item": "container_memory_max_usage_bytes"},
 		),
 		fsUsageDesc: prometheus.NewDesc(
 			"container_fs_usage_bytes",
 			"The usage of the file system in the container (unit: bytes)",
-			[]string{"job", "cluster", "namespace", "pod"},
+			[]string{"job", "cluster", "namespace", "pod", "container"},
 			prometheus.Labels{"item": "container_fs_usage_bytes"},
 		),
 		fsLimitDesc: prometheus.NewDesc(
 			"container_fs_limit_bytes",
 			"The total amount of file system that the container can use (unit: bytes)",
-			[]string{"job", "cluster", "namespace", "pod"},
+			[]string{"job", "cluster", "namespace", "pod", "container"},
 			prometheus.Labels{"item": "container_fs_limit_bytes"},
 		),
 	}
@@ -158,7 +160,7 @@ func (h *k8sMonitor) Describe(ch chan<- *prometheus.Desc) {
 func (h *k8sMonitor) Collect(ch chan<- prometheus.Metric) {
 	memData := prometheusClient.GetMemData()
 	for _, value := range memData {
-		labelValue := []string{value.Job, value.Cluster, value.NameSpace, value.Pod}
+		labelValue := []string{value.Job, value.Cluster, value.NameSpace, value.Pod, value.Container}
 		tempValue := value.Value
 		switch value.Name {
 		case "container_cpu_usage_seconds_total":

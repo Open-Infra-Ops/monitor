@@ -1,6 +1,10 @@
-interval: 20  # unit: s
+interval: 5  # unit: s
 service_port: 8000
-log_path: /var/log/ecs_exporter/
+#log_path: /var/log/ecs_exporter/
+log_path: ./
+kafka_server:
+kafka_topic_name:
+kafka_consumer_id:
 node_info:
   - node_name: node_10
     node_ip: 43.154.162.239:9200
