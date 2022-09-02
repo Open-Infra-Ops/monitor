@@ -9,47 +9,32 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
+	"github.com/astaxie/beego/config"
 	"github.com/astaxie/beego/logs"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"io/ioutil"
-	"net/http"
-	_ "net/http/pprof"
-	"os"
-	"sync/atomic"
-	"time"
-
-	prometheusClient "k8s_exporter/src"
-
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/jamiealquiza/envy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
+	"io/ioutil"
+	prometheusClient "k8s_exporter/src"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
+	"os"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
+	"time"
 )
-
-type config struct {
-	listenAddr    string
-	telemetryPath string
-	logLevel      string
-}
 
 type JsonResult struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
-}
-
-type k8sMonitor struct {
-	usageCpuSecondsDesc *prometheus.Desc
-	specCpuQuotaDesc    *prometheus.Desc
-	specCpuPeriodDesc   *prometheus.Desc
-	memUsageDesc        *prometheus.Desc
-	memLimitDesc        *prometheus.Desc
-	fsUsageDesc         *prometheus.Desc
-	fsLimitDesc         *prometheus.Desc
 }
 
 var (
@@ -100,121 +85,82 @@ func init() {
 	prometheus.MustRegister(httpRequestDuration)
 }
 
-func NewK8sMonitor() *k8sMonitor {
-	return &k8sMonitor{
-		usageCpuSecondsDesc: prometheus.NewDesc(
-			"container_cpu_usage_seconds_total",
-			"The usage seconds total of the container (unit: s)",
-			[]string{"job", "cluster", "namespace", "pod", "container"},
-			prometheus.Labels{"item": "container_cpu_usage_seconds_total"},
-		),
-		specCpuQuotaDesc: prometheus.NewDesc(
-			"container_spec_cpu_quota",
-			"The spec cpu quota of the container (unit: s)",
-			[]string{"job", "cluster", "namespace", "pod", "container"},
-			prometheus.Labels{"item": "container_spec_cpu_quota"},
-		),
-		specCpuPeriodDesc: prometheus.NewDesc(
-			"container_spec_cpu_period",
-			"The spec cpu period of the container (unit: s)",
-			[]string{"job", "cluster", "namespace", "pod", "container"},
-			prometheus.Labels{"item": "container_spec_cpu_period"},
-		),
-		memUsageDesc: prometheus.NewDesc(
-			"container_memory_usage_bytes",
-			"The current memory usage of the container (unit: bytes)",
-			[]string{"job", "cluster", "namespace", "pod", "container"},
-			prometheus.Labels{"item": "container_memory_usage_bytes"},
-		),
-		memLimitDesc: prometheus.NewDesc(
-			"container_memory_max_usage_bytes",
-			"The maximum memory usage of the container (unit: bytes)",
-			[]string{"job", "cluster", "namespace", "pod", "container"},
-			prometheus.Labels{"item": "container_memory_max_usage_bytes"},
-		),
-		fsUsageDesc: prometheus.NewDesc(
-			"container_fs_usage_bytes",
-			"The usage of the file system in the container (unit: bytes)",
-			[]string{"job", "cluster", "namespace", "pod", "container"},
-			prometheus.Labels{"item": "container_fs_usage_bytes"},
-		),
-		fsLimitDesc: prometheus.NewDesc(
-			"container_fs_limit_bytes",
-			"The total amount of file system that the container can use (unit: bytes)",
-			[]string{"job", "cluster", "namespace", "pod", "container"},
-			prometheus.Labels{"item": "container_fs_limit_bytes"},
-		),
+// read config
+func readConfig() (int, config.Configer) {
+	BConfig, err := config.NewConfig("ini", "conf/app.conf")
+	if err != nil {
+		fmt.Println("config init error:", err.Error())
+		return 1, BConfig
 	}
+	return 0, BConfig
+
 }
 
-func (h *k8sMonitor) Describe(ch chan<- *prometheus.Desc) {
-	ch <- h.usageCpuSecondsDesc
-	ch <- h.specCpuQuotaDesc
-	ch <- h.specCpuPeriodDesc
-	ch <- h.memUsageDesc
-	ch <- h.memLimitDesc
-	ch <- h.fsUsageDesc
-	ch <- h.fsLimitDesc
-}
-
-func (h *k8sMonitor) Collect(ch chan<- prometheus.Metric) {
-	memData := prometheusClient.GetMemData()
-	for _, value := range memData {
-		labelValue := []string{value.Job, value.Cluster, value.NameSpace, value.Pod, value.Container}
-		tempValue := value.Value
-		switch value.Name {
-		case "container_cpu_usage_seconds_total":
-			ch <- prometheus.MustNewConstMetric(h.usageCpuSecondsDesc, prometheus.GaugeValue, tempValue, labelValue...)
-		case "container_spec_cpu_quota":
-			ch <- prometheus.MustNewConstMetric(h.specCpuQuotaDesc, prometheus.GaugeValue, tempValue, labelValue...)
-		case "container_spec_cpu_period":
-			ch <- prometheus.MustNewConstMetric(h.specCpuPeriodDesc, prometheus.GaugeValue, tempValue, labelValue...)
-		case "container_memory_usage_bytes":
-			ch <- prometheus.MustNewConstMetric(h.memUsageDesc, prometheus.GaugeValue, tempValue, labelValue...)
-		case "container_memory_max_usage_bytes":
-			ch <- prometheus.MustNewConstMetric(h.memLimitDesc, prometheus.GaugeValue, tempValue, labelValue...)
-		case "container_fs_usage_bytes":
-			ch <- prometheus.MustNewConstMetric(h.fsUsageDesc, prometheus.GaugeValue, tempValue, labelValue...)
-		case "container_fs_limit_bytes":
-			ch <- prometheus.MustNewConstMetric(h.fsLimitDesc, prometheus.GaugeValue, tempValue, labelValue...)
-		default:
-			break
-		}
-	}
-}
-
-func parseFlags() *config {
-	cfg := &config{}
-	flag.StringVar(&cfg.listenAddr, "web-listen-address", "0.0.0.0:9201", "Address to listen on for web endpoints.")
-	flag.StringVar(&cfg.telemetryPath, "web-telemetry-path", "/metrics", "Address to listen on for web endpoints.")
-	envy.Parse("TS_PROM")
-	flag.Parse()
-	return cfg
+func GetInput() []byte {
+	reader := bufio.NewReader(os.Stdin)
+	data, _, _ := reader.ReadLine()
+	return data
 }
 
 func main() {
-	cfg := parseFlags()
-	prometheusClient.LogInit()
-	writer, reader := buildClients(cfg)
-	metricsPath := cfg.telemetryPath
-	registry := prometheus.NewRegistry()
-	registry.MustRegister(NewK8sMonitor())
-	http.Handle(metricsPath, promhttp.HandlerFor(registry, promhttp.HandlerOpts{Registry: registry}))
+	// first to read config
+	code, serviceConfig := readConfig()
+	if code != 0 {
+		fmt.Println("main:get config error")
+		return
+	}
+	// init log
+	prometheusClient.LogInit(serviceConfig)
+	// init kafka
+	brokers := serviceConfig.String("kafka::brokers")
+	//topics := serviceConfig.String("kafka::topic_name")
+	kafkaConfig := &kafka.ConfigMap{
+		"bootstrap.servers": brokers,
+	}
+	producer, err := kafka.NewProducer(kafkaConfig)
+	if err != nil {
+		log.Panicf("producer error, err: %v", err)
+		return
+	}
+	//go func() {
+	//	for e := range producer.Events() {
+	//		switch ev := e.(type) {
+	//		case *kafka.Message:
+	//			if ev.TopicPartition.Error != nil {
+	//				log.Printf("Delivery failed: %v\n", ev.TopicPartition)
+	//			} else {
+	//				log.Printf("Delivered message to %v\n", ev.TopicPartition)
+	//			}
+	//		}
+	//	}
+	//}()
+	// start to web
+	serverAddr := serviceConfig.String("web::web-listen-address")
+	writer, _ := buildClients(producer, serviceConfig)
 	http.Handle("/write", timeHandler("write", write(writer)))
-	http.Handle("/health", health(reader))
-	http.Handle("/", index(cfg))
+	http.Handle("/", index())
 	logs.Info("msg", "Starting up...")
-	logs.Info("msg", "Listening", "addr", cfg.listenAddr)
-	err := http.ListenAndServe(cfg.listenAddr, nil)
+	logs.Info("msg", "Listening", "addr", serverAddr)
+	err = http.ListenAndServe(serverAddr, nil)
 	if err != nil {
 		logs.Error("msg", "Listen failure", "err", err)
 		os.Exit(1)
 	}
+	// over kafka
+	// Wait for message deliveries before shutting down
+	sigterm := make(chan os.Signal, 1)
+	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)
+	select {
+	case <-sigterm:
+		log.Println("terminating: via signal")
+	}
+	producer.Flush(15 * 1000)
+	producer.Close()
 }
 
 // instantiate the client
-func buildClients(cfg *config) (writer, reader) {
-	mySqlClient := prometheusClient.NewClient(cfg.telemetryPath)
+func buildClients(p *kafka.Producer, c config.Configer) (writer, reader) {
+	mySqlClient := prometheusClient.NewClient(p, c)
 	return mySqlClient, mySqlClient
 }
 
@@ -326,14 +272,14 @@ func health(reader reader) http.Handler {
 	})
 }
 
-func index(cfg *config) http.Handler {
+func index() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		indexTemplates := `<!DOCTYPE html>
 		<html>
 		<head><title>K8S Exporter</title></head>
 		<body>
 		<h1>K8S Exporter</h1>
-		<p><a href=` + cfg.telemetryPath + `>Metrics</a></p>
+		<p>Health</p>
 		</body>
 		</html>`
 		_, err := fmt.Fprintf(w, indexTemplates)

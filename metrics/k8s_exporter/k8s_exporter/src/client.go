@@ -3,28 +3,24 @@ package PrometheusClient
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/astaxie/beego/config"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
+	"log"
 	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
 type Client struct {
-	TableList     []MonItem
-	telemetryPath string
-}
-
-type Config struct {
-	remoteTimeout     time.Duration
-	listenAddr        string
-	telemetryPath     string
-	logLevel          string
-	prometheusTimeout time.Duration
+	TableList   []MonItem
+	kafkaClient *kafka.Producer
+	baseConfig  config.Configer
 }
 
 type MonItem struct {
@@ -38,18 +34,19 @@ type MonItem struct {
 	Info      map[string]string
 }
 
-var (
-	RwMutex sync.RWMutex
-	MemData map[string]MonItem
-)
-
-func init() {
-	MemData = make(map[string]MonItem)
+type CollectMonItem struct {
+	metrics string
+	items   MonItem
+	value   string
+	time    string
 }
 
 // NewClient creates a new client
-func NewClient(telemetryPath string) *Client {
-	client := &Client{telemetryPath: telemetryPath}
+func NewClient(p *kafka.Producer, c config.Configer) *Client {
+	client := &Client{
+		kafkaClient: p,
+		baseConfig:  c,
+	}
 	return client
 }
 
@@ -175,23 +172,11 @@ func checkParam(t MonItem) bool {
 	return true
 }
 
-// private func: set Mem Data
-func setMemData(t MonItem) {
-	RwMutex.Lock()
-	defer RwMutex.Unlock()
-	mapKey := t.Job + "_" + t.Cluster + "_" + t.NameSpace + "_" + t.Pod + "_" + t.Container + "_" + t.Name
-	MemData[mapKey] = t
-}
-
-// GetMemData get mem data
-func GetMemData() map[string]MonItem {
-	RwMutex.RLock()
-	defer RwMutex.RUnlock()
-	return MemData
-}
-
 // Write implements the Writer interface and writes metric samples to the database
 func (c *Client) Write(samples model.Samples) error {
+	serviceConfig := c.baseConfig
+	topics := serviceConfig.String("kafka::topic_name")
+	collectMonItemList := []CollectMonItem{}
 	for _, sample := range samples {
 		t := parseMetric(sample.Metric)
 		if !checkName(t.Name) {
@@ -210,9 +195,32 @@ func (c *Client) Write(samples model.Samples) error {
 			value = float64(sample.Value)
 		}
 		t.Value = value
-		setMemData(t)
-		//temp := t.Job + "_" + t.Cluster + "_" + t.NameSpace + "_" + t.Pod + "_" + t.Name + "_" + strconv.FormatFloat(t.Value, 'E', -1, 64)
-		//logs.Info("msg", "data:", "collect--->", temp)
+		c := CollectMonItem{
+			metrics: t.Name,
+			items:   t,
+			value:   strconv.FormatFloat(t.Value, 'E', -1, 64),
+			time:    fmt.Sprintf("%d", time.Now().Unix()),
+		}
+		collectMonItemList = append(collectMonItemList, c)
+	}
+	paymentDataBuf, _ := json.Marshal(&collectMonItemList)
+	err := c.kafkaClient.Produce(&kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &topics, Partition: kafka.PartitionAny},
+		Value:          paymentDataBuf,
+	}, nil)
+	if err != nil {
+		log.Panicf("send message fail, err: %v", err)
+		return err
+	}
+	for e := range c.kafkaClient.Events() {
+		switch ev := e.(type) {
+		case *kafka.Message:
+			if ev.TopicPartition.Error != nil {
+				log.Printf("Delivery failed: %v\n", ev.TopicPartition)
+			} else {
+				log.Printf("Delivered message to %v\n", ev.TopicPartition)
+			}
+		}
 	}
 	return nil
 }
