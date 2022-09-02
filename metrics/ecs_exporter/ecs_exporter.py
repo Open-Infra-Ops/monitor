@@ -8,6 +8,7 @@ import datetime
 import json
 import re
 import time
+import traceback
 import yaml
 import requests
 import logging
@@ -28,30 +29,9 @@ logger = logging.getLogger('ecs_exporter')
 
 
 class GlobalConfig(object):
-    # config_path = "/etc/ecs_exporter/ecs_exporter.yaml"
-    config_path = "./ecs_exporter.yaml"
+    config_path = "/etc/ecs_exporter/ecs_exporter.yaml"
     collect_url = "http://{}/metrics"
     default_log_name = "ecs_exporter.log"
-
-
-class MetricData(object):
-    _cur_metrics_data = list()
-    _lock = Lock()
-
-    @classmethod
-    def set(cls, metrics_data):
-        with cls._lock:
-            cls._cur_metrics_data.extend(metrics_data)
-
-    @classmethod
-    def get(cls):
-        with cls._lock:
-            return cls._cur_metrics_data
-
-    @classmethod
-    def get_all_content(cls):
-        all_content_dict = cls.get()
-        return json.dumps(all_content_dict)
 
 
 # noinspection DuplicatedCode
@@ -94,20 +74,15 @@ async def collect_node_data(node_name, node_ip):
                 ret_content.append(dict_data)
             elif len(content_temp_list) == 1:
                 items_list = content_temp_list[0].split()
-                print("*****************")
-                print(items_list)
-                print(content_temp_list)
-                print(content)
                 dict_data = {
                     "metrics": items_list[0],
                     "items": items_dict,
                     "value": items_list[-1].strip(),
-                    "time": time.time()
+                    "time": int(time.time())
                 }
                 ret_content.append(dict_data)
             else:
                 logger.info("[collect_node_data] invalid data:{}".format(content))
-    print(ret_content)
     return ret_content
 
 
@@ -139,11 +114,10 @@ class CollectMetric(object):
             for i in list(ret_tuple[0]):
                 ret_list.extend(i.result())
             ret_str = json.dumps(ret_list)
-            # data = bytes(ret_str, encodings="utf-8")
-            data = bytes(ret_str)
+            data = bytes(ret_str, encoding="utf-8")
             consumer.send(topic_name, data)
         except Exception as e:
-            logger.error("[loop_collect_data] {}".format(e))
+            logger.error("[loop_collect_data] {}:{}".format(e, traceback.format_exc()))
 
     @classmethod
     def init_task(cls, config_info):
@@ -186,8 +160,6 @@ class InitProgress(object):
             raise Exception("[check_yaml_config] invalid kafka_server")
         if not config.get("kafka_topic_name"):
             raise Exception("[check_yaml_config] invalid kafka_topic_name")
-        if not config.get("kafka_consumer_id"):
-            raise Exception("[check_yaml_config] invalid kafka_consumer_id")
         if not config.get("node_info") or not isinstance(config["node_info"], list):
             raise Exception("[check_yaml_config] invalid node_info")
         for node_temp in config["node_info"]:
@@ -225,18 +197,10 @@ def metrics():
         <head><title>ECS Exporter</title></head>
         <body>
             <h1>ECS Exporter</h1>
-            <p><a href='/metrics'>Metrics</a></p>
+            <p>health</p>
         </body>
     </html>'''
     return templates
-
-
-@APP.route("/metrics")
-def collect_metrics():
-    content = MetricData.get_all_content()
-    resp = Response(content)
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
 
 
 def main():
