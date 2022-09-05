@@ -20,31 +20,16 @@ cd /opt/prometheus/
 vim prometheus.yml
 
 global:
-  scrape_interval:     120s
-  evaluation_interval: 120s
-  scrape_timeout: 120s
+  scrape_interval:     60s
+  evaluation_interval: 60s
+  scrape_timeout: 60s
 
 scrape_configs:
-  - job_name: ecs_account_zone_node10     # 针对于不同集群的同名的节点，可以修改job_name来做唯一性
+  - job_name: prometheus_gateway     # 针对于不同集群的同名的节点，可以修改job_name来做唯一性
     metrics_path: "/metrics"    # promtheus-proxy设置的路径
-    basic_auth:
-      username: *****  # 这里填nginx设置的用户名
-      password: *****  # 这里填nginx设置的用户名对应的密码
-    scheme: https
-    static_configs:
-      - targets: ["tomtoworld.xyz"]
-
-  - job_name: k8s_account_zone_cluster
-    metrics_path: "/metrics"
-    basic_auth:
-      username: *****
-      password: *****
-    scheme: https
     static_configs:
       - targets: ["tomtoworld.xyz"]
 ~~~
-
-
 
 3.启动容器
 

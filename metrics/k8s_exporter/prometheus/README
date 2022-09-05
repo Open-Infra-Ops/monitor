@@ -10,7 +10,7 @@
 
 2.获取数据
     简单内容：
-    curl https://127.0.0.1:10250/metrics/cadvisor -k -H "Authorization:Bearer *****"  # token可以在prometheus抓取的时候配置, 但是不知道代理是否可以传送？
+    curl https://127.0.0.1:10250/metrics/cadvisor -k -H "Authorization:Bearer *****"
     更详细的内容：
     curl -k https://192.168.1.115:6443/metrics -H "Authorization:Bearer ******
 

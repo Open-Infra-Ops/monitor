@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/7/14 17:15
 # @Author  : Tom_zc
-# @FileName: cce_exporter.py
+# @FileName: ecs_exporter.py
 # @Software: PyCharm
 import datetime
 import json

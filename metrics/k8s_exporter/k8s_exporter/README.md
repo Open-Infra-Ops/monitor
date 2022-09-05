@@ -2,14 +2,16 @@
 
 ## 1.需求
 
-​	k8s_exporter主要是采集prometheus通过remote_write推来的数据，再通过web接口暴露给prometheus.
+​	k8s_exporter主要是采集prometheus通过remote_write推来的数据，再将数据推送给kafka.
 
 ## 2.实现
 
 ### 	1.采集的指标
 
 ~~~bash
-container_cpu_load_average_10s          gauge       过去10秒容器CPU的平均负载  	     
+container_cpu_usage_seconds_total       gauge
+container_spec_cpu_quota                gauge
+container_spec_cpu_period               gauge
 container_memory_usage_bytes            gauge       容器当前的内存使用量（单位：字节）
 container_memory_max_usage_bytes        gauge       容器的最大内存使用量（单位：字节）
 container_fs_usage_bytes                gauge       容器文件系统的使用量(单位：字节)
@@ -18,7 +20,7 @@ container_fs_limit_bytes                gauge       容器文件系统的总量(
 
 ### 	2.采集的流程
 
-​		c-advsior----> prometheus1---->k8s_exporter----> prometheus2
+​		c-advsior----> prometheus1---->k8s_exporter----> kafka
 
 ### 	3.配置文件
 
@@ -30,11 +32,20 @@ remote_write:
     - url: "http://prometheus_k8s_exporter:9201/write"
 ~~~
 
-#### 2.k8s_exporter的暴露点
+#### 2.k8s_exporter的配置文件 conf/app.conf
 
 ~~~bash
-暴露网址：
-http://127.0.0.1:9201/metrics
+[web]
+web-listen-address = 0.0.0.0:9201  #服务监听的端口
+[log]
+log_level = 6  # 日志级别
+log_dir = ./logs # 日志路径
+log_path = logs/k8s_exporter.log  #日志
+maxlines=25000  # log文件最大行数
+maxsize=204800   # log文件大小限制
+[kafka]
+brokers = 192.168.1.235:9092,192.168.1.196:9092,192.168.1.228:9092  # kafka服务端
+topic_name = aom-metrics  # kafka生产的topic
 ~~~
 
 ### 4.生成docker镜像

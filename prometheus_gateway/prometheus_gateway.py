@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/7/14 17:15
 # @Author  : Tom_zc
-# @FileName: cce_exporter.py
+# @FileName: prometheus_gateway.py
 # @Software: PyCharm
 import json
 import math
@@ -165,7 +165,6 @@ class EipTools(object):
             for metrics_info in list_data:
                 metrics_key_list = list(metrics_info["items"].values())
                 metrics_key_list.append(metrics_info["metrics"])
-                print(metrics_key_list)
                 dict_data = {
                     tuple(metrics_key_list): metrics_info["value"]
                 }
