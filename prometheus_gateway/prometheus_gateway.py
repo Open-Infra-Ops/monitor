@@ -25,6 +25,7 @@ logger = logging.getLogger('prometheus_gateway')
 
 class GlobalConfig(object):
     config_path = "/opt/prometheus_gateway/prometheus_gateway.yaml"
+    # config_path = "prometheus_gateway.yaml"
 
 
 class MetricData(object):
@@ -86,7 +87,7 @@ class Metric(object):
             else:
                 result = result.replace("-", "_")
 
-            return "cce_{0}".format(result)
+            return "{0}".format(result)
 
         def floatstr(value):
             ''' represent as Go-compatible float '''
@@ -130,18 +131,19 @@ class ExposeMetric(object):
     def _setup_expose_metric(cur_metric_dict, metrics_config):
         metric_dict = dict()
         for tuple_info, _ in cur_metric_dict.items():
-            metrics_type = metrics_config["type"]
-            metrics_name = metrics_config["name"]
-            metrics_desc = metrics_config["desc"]
-            metrics_labels = metrics_config["labels"]
+            item = tuple_info[-1]
+            metrics_type = metrics_config[item]["type"]
+            metrics_name = metrics_config[item]["name"]
+            metrics_desc = metrics_config[item]["desc"]
+            metrics_labels = metrics_config[item]["labels"]
             metric_dict[tuple_info] = Metric(metrics_type, metrics_name, metrics_desc, metrics_labels)
         return metric_dict
 
     def set_metric_data(self, metric_dict):
         for tuple_info, value in metric_dict.items():
             self.metrics_dict[tuple_info].clear()
-        # for tuple_info, value in metric_dict.items():
-            self.metrics_dict[tuple_info].set(value, tuple_info[0:-1])
+            value_temp = round(float(value), 4)
+            self.metrics_dict[tuple_info].set(value_temp, tuple_info[0:-1])
 
 
 class EipTools(object):
@@ -155,7 +157,7 @@ class EipTools(object):
     @classmethod
     def loop_collect_data(cls, config_info):
         consumer = KafkaConsumer(config_info["kafka_topic"], bootstrap_servers=config_info["kafka_server"],
-                                 group_id=config_info["prometheus_gateway"])
+                                 group_id=config_info["kafka_consumer_id"])
         metrics_config = cls.parse_metrics_info(config_info)
         for message in consumer:
             content = message.value.decode("utf-8")
@@ -163,8 +165,9 @@ class EipTools(object):
             for metrics_info in list_data:
                 metrics_key_list = list(metrics_info["items"].values())
                 metrics_key_list.append(metrics_info["metrics"])
+                print(metrics_key_list)
                 dict_data = {
-                    tuple(metrics_key_list): list_data["value"]
+                    tuple(metrics_key_list): metrics_info["value"]
                 }
                 MetricData.set(dict_data)
             # refresh web data
@@ -172,7 +175,8 @@ class EipTools(object):
             expose_metric = ExposeMetric(cur_metric_dict, metrics_config)
             expose_metric.set_metric_data(cur_metric_dict)
             ret_metric = [m.str_expfmt() for m in expose_metric.metrics_dict.values()]
-            MetricData.web_set(''.join(ret_metric))
+            content = ''.join(ret_metric)
+            MetricData.web_set(content)
 
     @staticmethod
     def load_yaml(path=GlobalConfig.config_path):
@@ -253,7 +257,6 @@ class EipTools(object):
         logger.info("##################start to collect thread#############")
         th = Thread(target=cls.loop_collect_data, args=(config_info,), daemon=True)
         th.start()
-
 
 
 @APP.route("/")
