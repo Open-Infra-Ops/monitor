@@ -14,7 +14,7 @@ import requests
 import logging
 import os
 import asyncio
-from flask import Flask, Response
+from flask import Flask
 from threading import Lock
 from kafka import KafkaProducer
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -113,9 +113,12 @@ class CollectMetric(object):
             ret_list = list()
             for i in list(ret_tuple[0]):
                 ret_list.extend(i.result())
-            ret_str = json.dumps(ret_list)
-            data = bytes(ret_str, encoding="utf-8")
-            consumer.send(topic_name, data)
+            if ret_list:
+                ret_str = json.dumps(ret_list)
+                data = bytes(ret_str, encoding="utf-8")
+                consumer.send(topic_name, data)
+            else:
+                logger.info("[loop_collect_data] Getting data is empty")
         except Exception as e:
             logger.error("[loop_collect_data] {}:{}".format(e, traceback.format_exc()))
 

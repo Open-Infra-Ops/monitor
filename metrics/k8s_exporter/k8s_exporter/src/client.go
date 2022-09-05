@@ -4,16 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/astaxie/beego/config"
+	"github.com/astaxie/beego/logs"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
-	"log"
 	"math"
-	"reflect"
-	"sort"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -35,10 +30,10 @@ type MonItem struct {
 }
 
 type CollectMonItem struct {
-	metrics string
-	items   MonItem
-	value   string
-	time    string
+	Metrics string            `json:"metrics"`
+	Items   map[string]string `json:"items"`
+	Value   string            `json:"value"`
+	Time    string            `json:"time"`
 }
 
 // NewClient creates a new client
@@ -195,13 +190,22 @@ func (c *Client) Write(samples model.Samples) error {
 			value = float64(sample.Value)
 		}
 		t.Value = value
+		itemsMap := make(map[string]string)
+		itemsMap["job"] = t.Job
+		itemsMap["cluster"] = t.Cluster
+		itemsMap["namespace"] = t.NameSpace
+		itemsMap["pod"] = t.Pod
+		itemsMap["container"] = t.Container
 		c := CollectMonItem{
-			metrics: t.Name,
-			items:   t,
-			value:   strconv.FormatFloat(t.Value, 'E', -1, 64),
-			time:    fmt.Sprintf("%d", time.Now().Unix()),
+			Metrics: t.Name,
+			Items:   itemsMap,
+			Value:   strconv.FormatFloat(t.Value, 'E', -1, 64),
+			Time:    fmt.Sprintf("%d", time.Now().Unix()),
 		}
 		collectMonItemList = append(collectMonItemList, c)
+	}
+	if len(collectMonItemList) == 0 {
+		return nil
 	}
 	paymentDataBuf, _ := json.Marshal(&collectMonItemList)
 	err := c.kafkaClient.Produce(&kafka.Message{
@@ -209,94 +213,20 @@ func (c *Client) Write(samples model.Samples) error {
 		Value:          paymentDataBuf,
 	}, nil)
 	if err != nil {
-		log.Panicf("send message fail, err: %v", err)
+		logs.Info("send message fail, err: %v", err)
 		return err
 	}
 	for e := range c.kafkaClient.Events() {
 		switch ev := e.(type) {
 		case *kafka.Message:
 			if ev.TopicPartition.Error != nil {
-				log.Printf("Delivery failed: %v\n", ev.TopicPartition)
+				logs.Info("Delivery failed: %v\n", ev.TopicPartition)
 			} else {
-				log.Printf("Delivered message to %v\n", ev.TopicPartition)
+				logs.Info("Delivered message to %v\n", ev.TopicPartition)
 			}
 		}
 	}
 	return nil
-}
-
-type sampleLabels struct {
-	JSON        []byte
-	Map         map[string]string
-	OrderedKeys []string
-}
-
-func createOrderedKeys(m *map[string]string) []string {
-	keys := make([]string, 0, len(*m))
-	for k := range *m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func (l *sampleLabels) Scan(value interface{}) error {
-	if value == nil {
-		l = &sampleLabels{}
-		return nil
-	}
-
-	switch t := value.(type) {
-	case []uint8:
-		m := make(map[string]string)
-		err := json.Unmarshal(t, &m)
-
-		if err != nil {
-			return err
-		}
-
-		*l = sampleLabels{
-			JSON:        t,
-			Map:         m,
-			OrderedKeys: createOrderedKeys(&m),
-		}
-		return nil
-	}
-	return fmt.Errorf("invalid labels value %s", reflect.TypeOf(value))
-}
-
-func (l sampleLabels) String() string {
-	return string(l.JSON)
-}
-
-func (l sampleLabels) key(extra string) string {
-	// 0xff cannot occur in valid UTF-8 sequences, so use it
-	// as a separator here.
-	separator := "\xff"
-	pairs := make([]string, 0, len(l.Map)+1)
-	pairs = append(pairs, extra+separator)
-
-	for _, k := range l.OrderedKeys {
-		pairs = append(pairs, k+separator+l.Map[k])
-	}
-	return strings.Join(pairs, separator)
-}
-
-func (l *sampleLabels) len() int {
-	return len(l.OrderedKeys)
-}
-
-// Read implements the Reader interface and reads metrics samples from the database
-func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
-	labelsToSeries := map[string]*prompb.TimeSeries{}
-	resp := prompb.ReadResponse{
-		Results: []*prompb.QueryResult{
-			{
-				Timeseries: make([]*prompb.TimeSeries, 0, len(labelsToSeries)),
-			},
-		},
-	}
-	return &resp, nil
 }
 
 // HealthCheck implements the healthCheck interface
@@ -307,12 +237,4 @@ func (c *Client) HealthCheck() error {
 // Name identifies the client as a client.
 func (c Client) Name() string {
 	return "K8S_EXPORTER"
-}
-
-// Describe implements prometheus.Collector.
-func (c *Client) Describe(ch chan<- *prometheus.Desc) {
-}
-
-// Collect implements prometheus.Collector.
-func (c *Client) Collect(ch chan<- prometheus.Metric) {
 }

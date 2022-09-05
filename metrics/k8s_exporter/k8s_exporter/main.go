@@ -9,8 +9,6 @@
 package main
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"github.com/astaxie/beego/config"
 	"github.com/astaxie/beego/logs"
@@ -22,7 +20,6 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"io/ioutil"
 	prometheusClient "k8s_exporter/src"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -86,57 +83,37 @@ func init() {
 }
 
 // read config
-func readConfig() (int, config.Configer) {
+func readConfig() (e error, c config.Configer) {
 	BConfig, err := config.NewConfig("ini", "conf/app.conf")
 	if err != nil {
 		fmt.Println("config init error:", err.Error())
-		return 1, BConfig
+		return err, BConfig
 	}
-	return 0, BConfig
-
-}
-
-func GetInput() []byte {
-	reader := bufio.NewReader(os.Stdin)
-	data, _, _ := reader.ReadLine()
-	return data
+	return nil, BConfig
 }
 
 func main() {
-	// first to read config
-	code, serviceConfig := readConfig()
-	if code != 0 {
+	// 1.first to read config
+	err, serviceConfig := readConfig()
+	if err != nil {
 		fmt.Println("main:get config error")
 		return
 	}
-	// init log
+	// 2.init log
 	prometheusClient.LogInit(serviceConfig)
-	// init kafka
+	// 3.init kafka
 	brokers := serviceConfig.String("kafka::brokers")
-	//topics := serviceConfig.String("kafka::topic_name")
 	kafkaConfig := &kafka.ConfigMap{
 		"bootstrap.servers": brokers,
 	}
 	producer, err := kafka.NewProducer(kafkaConfig)
 	if err != nil {
-		log.Panicf("producer error, err: %v", err)
+		logs.Info("producer error, err: %v", err)
 		return
 	}
-	//go func() {
-	//	for e := range producer.Events() {
-	//		switch ev := e.(type) {
-	//		case *kafka.Message:
-	//			if ev.TopicPartition.Error != nil {
-	//				log.Printf("Delivery failed: %v\n", ev.TopicPartition)
-	//			} else {
-	//				log.Printf("Delivered message to %v\n", ev.TopicPartition)
-	//			}
-	//		}
-	//	}
-	//}()
-	// start to web
+	// 4.start to web
 	serverAddr := serviceConfig.String("web::web-listen-address")
-	writer, _ := buildClients(producer, serviceConfig)
+	writer := buildClients(producer, serviceConfig)
 	http.Handle("/write", timeHandler("write", write(writer)))
 	http.Handle("/", index())
 	logs.Info("msg", "Starting up...")
@@ -146,22 +123,22 @@ func main() {
 		logs.Error("msg", "Listen failure", "err", err)
 		os.Exit(1)
 	}
-	// over kafka
+	// 5.over kafka
 	// Wait for message deliveries before shutting down
 	sigterm := make(chan os.Signal, 1)
 	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case <-sigterm:
-		log.Println("terminating: via signal")
+		logs.Info("terminating: via signal")
 	}
 	producer.Flush(15 * 1000)
 	producer.Close()
 }
 
 // instantiate the client
-func buildClients(p *kafka.Producer, c config.Configer) (writer, reader) {
+func buildClients(p *kafka.Producer, c config.Configer) writer {
 	mySqlClient := prometheusClient.NewClient(p, c)
-	return mySqlClient, mySqlClient
+	return mySqlClient
 }
 
 type reader interface {
@@ -248,26 +225,7 @@ func write(writer writer) http.Handler {
 
 		err = sendSamples(writer, samples)
 		if err != nil {
-			logs.Warn("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
-		}
-
-	})
-}
-
-func health(reader reader) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		err := reader.HealthCheck()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		msg, _ := json.Marshal(JsonResult{Code: 200, Msg: "ok"})
-		w.Header().Set("content-type", "text/json")
-		_, err = w.Write(msg)
-		if err != nil {
-			logs.Error("msg", "health api", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			logs.Info("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
 		}
 	})
 }
