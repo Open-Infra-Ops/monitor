@@ -6,11 +6,9 @@
 import json
 import math
 import re
-import time
-
+import yaml
 import requests
 import logging
-import os
 
 from flask import Flask, Response
 from threading import Thread, Lock, Event
@@ -22,20 +20,20 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 APP = Flask(__name__)
 
-logger = logging.getLogger('cce_exporter')
+logger = logging.getLogger('prometheus_gateway')
 
 
 class GlobalConfig(object):
-    bootstrap_servers = os.getenv("kafka_server", "").split(",")
-    topic_name = os.getenv("kafka_topic", "aom-metrics-{}".format(int(time.time())))
-    consumer_id = os.getenv("kafka_consumer_id", 'comsumer-aom-metrics-{}'.format(int(time.time())))
-    port = os.getenv("port", 8000)
-    collect_metrics = ["memUsage", "cpuUsage", "filesystemCapacity", "filesystemAvailable"]
+    config_path = "/opt/prometheus_gateway/prometheus_gateway.yaml"
 
 
 class MetricData(object):
+    """save the metric data"""
     _cur_metrics_data = dict()
     _lock = Lock()
+
+    _cur_web_data = str()
+    _web_lock = Lock()
 
     @classmethod
     def set(cls, metrics_data):
@@ -46,6 +44,16 @@ class MetricData(object):
     def get(cls):
         with cls._lock:
             return cls._cur_metrics_data
+
+    @classmethod
+    def web_set(cls, metrics_data):
+        with cls._web_lock:
+            cls._cur_web_data = metrics_data
+
+    @classmethod
+    def web_get(cls):
+        with cls._web_lock:
+            return cls._cur_web_data
 
 
 class Metric(object):
@@ -115,90 +123,121 @@ class Metric(object):
 
 
 class ExposeMetric(object):
-    def __init__(self, cur_metric_dict):
-        self.metrics_dict = self._setup_expose_metric(cur_metric_dict)
+    def __init__(self, cur_metric_dict, metrics_config):
+        self.metrics_dict = self._setup_expose_metric(cur_metric_dict, metrics_config)
 
     @staticmethod
-    def _setup_expose_metric(cur_metric_dict):
+    def _setup_expose_metric(cur_metric_dict, metrics_config):
         metric_dict = dict()
         for tuple_info, _ in cur_metric_dict.items():
-            if tuple_info[-1] == "memUsage":
-                metric_dict[tuple_info] = Metric('gauge', 'scrape_mem_usage', 'Scrape_memory_useage',
-                                                 ("cluster_name", "namespace", "container_name"))
-            elif tuple_info[-1] == "cpuUsage":
-                metric_dict[tuple_info] = Metric('gauge', 'scrape_cpu_usage', 'Scrape_cpu_useage',
-                                                 ("cluster_name", "namespace", "container_name"))
-            elif tuple_info[-1] == "filesystemAvailable":
-                metric_dict[tuple_info] = Metric('gauge', 'scrape_filesystem_available',
-                                                 'Total available capacity of the file system',
-                                                 ("cluster_name", "namespace", "container_name"))
-            elif tuple_info[-1] == "filesystemCapacity":
-                metric_dict[tuple_info] = Metric('gauge', 'scrape_filesystem_capacity',
-                                                 'Total capacity of the file system',
-                                                 ("cluster_name", "namespace", "container_name"))
-            else:
-                logger.error("need to adapter")
+            metrics_type = metrics_config["type"]
+            metrics_name = metrics_config["name"]
+            metrics_desc = metrics_config["desc"]
+            metrics_labels = metrics_config["labels"]
+            metric_dict[tuple_info] = Metric(metrics_type, metrics_name, metrics_desc, metrics_labels)
         return metric_dict
 
     def set_metric_data(self, metric_dict):
         for tuple_info, value in metric_dict.items():
             self.metrics_dict[tuple_info].clear()
-        for tuple_info, value in metric_dict.items():
+        # for tuple_info, value in metric_dict.items():
             self.metrics_dict[tuple_info].set(value, tuple_info[0:-1])
 
 
 class EipTools(object):
     _lock = Lock()
     _event = Event()
+    _metrics_config = None
 
     def __init__(self, *args, **kwargs):
         super(EipTools, self).__init__(*args, **kwargs)
 
     @classmethod
-    def parse_metrics_data(cls, metrics_info):
-        ret_dict = dict()
-        cluster_name, namespace_name, container_name = str(), str(), str()
-        for dimensions_temp in metrics_info["metric"]["dimensions"]:
-            if dimensions_temp["name"] == "clusterName":
-                cluster_name = dimensions_temp["value"]
-            elif dimensions_temp["name"] == "nameSpace":
-                namespace_name = dimensions_temp["value"]
-            elif dimensions_temp["name"] == "containerName":
-                container_name = dimensions_temp["value"]
-        if not container_name:
-            return ret_dict
-        for values_temp in metrics_info["values"]:
-            if values_temp["metric_name"] in GlobalConfig.collect_metrics:
-                ret_dict[(cluster_name, namespace_name, container_name, values_temp["metric_name"])] = float(values_temp["value"])
-        return ret_dict
-
-    @classmethod
-    def loop_collect_data(cls):
-        consumer = KafkaConsumer(GlobalConfig.topic_name, bootstrap_servers=GlobalConfig.bootstrap_servers,
-                                 group_id=GlobalConfig.consumer_id)
+    def loop_collect_data(cls, config_info):
+        consumer = KafkaConsumer(config_info["kafka_topic"], bootstrap_servers=config_info["kafka_server"],
+                                 group_id=config_info["prometheus_gateway"])
+        metrics_config = cls.parse_metrics_info(config_info)
         for message in consumer:
             content = message.value.decode("utf-8")
-            dict_data = json.loads(content)
-            for metrics_info in dict_data["metrics"]:
-                if metrics_info["metric"]["namespace"] != "PAAS.CONTAINER":
-                    continue
-                dimensions_name_list = [dimensions_info["name"] for dimensions_info in
-                                        metrics_info["metric"]["dimensions"]]
-                if "clusterName" not in dimensions_name_list:
-                    continue
-                if metrics_info.get("values") is None:
-                    continue
-                parse_data = cls.parse_metrics_data(metrics_info)
-                if parse_data:
-                    print("***************************:{}".format(parse_data))
-                    MetricData.set(parse_data)
+            list_data = json.loads(content)
+            for metrics_info in list_data:
+                metrics_key_list = list(metrics_info["items"].values())
+                metrics_key_list.append(metrics_info["metrics"])
+                dict_data = {
+                    tuple(metrics_key_list): list_data["value"]
+                }
+                MetricData.set(dict_data)
+            # refresh web data
+            cur_metric_dict = MetricData.get()
+            expose_metric = ExposeMetric(cur_metric_dict, metrics_config)
+            expose_metric.set_metric_data(cur_metric_dict)
+            ret_metric = [m.str_expfmt() for m in expose_metric.metrics_dict.values()]
+            MetricData.web_set(''.join(ret_metric))
+
+    @staticmethod
+    def load_yaml(path=GlobalConfig.config_path):
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.load(f, Loader=yaml.FullLoader)
+
+    @classmethod
+    def check_yaml_config(cls, config):
+        if not isinstance(config, dict):
+            raise Exception("[check_yaml_config] invalid config")
+        if not config.get("service_port"):
+            raise Exception("[check_yaml_config] invalid service_port")
+        if not config.get("kafka_server"):
+            raise Exception("[check_yaml_config] invalid kafka_server")
+        if not config.get("kafka_topic"):
+            raise Exception("[check_yaml_config] invalid kafka_topic")
+        if not config.get("kafka_consumer_id"):
+            raise Exception("[check_yaml_config] invalid kafka_consumer_id")
+        if not config.get("metrics_info") or not isinstance(config["metrics_info"], list):
+            raise Exception("[check_yaml_config] invalid metrics_info")
+        for metrics_temp in config["metrics_info"]:
+            if not metrics_temp.get("item"):
+                raise Exception("[check_yaml_config] invalid node_info:{}".format(metrics_temp["item"]))
+            if not metrics_temp.get("type"):
+                raise Exception("[check_yaml_config] invalid node_info:{}".format(metrics_temp["type"]))
+            if not metrics_temp.get("name"):
+                raise Exception("[check_yaml_config] invalid node_info:{}".format(metrics_temp["name"]))
+            if not metrics_temp.get("desc"):
+                raise Exception("[check_yaml_config] invalid node_info:{}".format(metrics_temp["desc"]))
+            if not metrics_temp.get("labels"):
+                raise Exception("[check_yaml_config] invalid node_info:{}".format(metrics_temp["labels"]))
+
+    @classmethod
+    def get_config_info(cls):
+        config_info = cls.load_yaml()
+        cls.check_yaml_config(config_info)
+        return config_info
+
+    @classmethod
+    def parse_metrics_info(cls, config_dict):
+        metrics_info = config_dict["metrics_info"]
+        dict_data = dict()
+        for metrics_dict in metrics_info:
+            dict_data[metrics_dict["item"]] = {
+                "type": metrics_dict["type"],
+                "name": metrics_dict["name"],
+                "desc": metrics_dict["desc"],
+                "labels": tuple(metrics_dict["labels"].split(",")),
+            }
+        return dict_data
+
+    @classmethod
+    def get_metrics_config(cls):
+        if cls._metrics_config is None:
+            config = cls.get_config_info()
+            cls._metrics_config = cls.parse_metrics_info(config)
+        return cls._metrics_config
 
     @classmethod
     def init_logger(cls):
         global logger
         logger.setLevel(level=logging.INFO)
         formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-        size_rotate_file = RotatingFileHandler(filename='cce_exporter.log', maxBytes=5 * 1024 * 1024, backupCount=10)
+        size_rotate_file = RotatingFileHandler(filename='prometheus_gateway.log', maxBytes=5 * 1024 * 1024,
+                                               backupCount=10)
         size_rotate_file.setFormatter(formatter)
         size_rotate_file.setLevel(logging.INFO)
 
@@ -210,29 +249,20 @@ class EipTools(object):
         logger.addHandler(console_handler)
 
     @classmethod
-    def init_task(cls):
+    def init_task(cls, config_info):
         logger.info("##################start to collect thread#############")
-        th = Thread(target=cls.loop_collect_data, daemon=True)
+        th = Thread(target=cls.loop_collect_data, args=(config_info,), daemon=True)
         th.start()
-        # cls.loop_collect_data()
 
-    @classmethod
-    def query_data(cls):
-        with cls._lock:
-            cur_metric_dict = MetricData.get()
-            expose_metric = ExposeMetric(cur_metric_dict)
-            expose_metric.set_metric_data(cur_metric_dict)
-            ret_metric = [m.str_expfmt() for m in expose_metric.metrics_dict.values()]
-            return ''.join(ret_metric)
 
 
 @APP.route("/")
 def metrics():
     templates = '''<!DOCTYPE html>
     <html>
-        <head><title>CCE Exporter</title></head>
+        <head><title>Prometheus_Gateway Exporter</title></head>
         <body>
-            <h1>CCE Exporter</h1>
+            <h1>Prometheus_Gateway Exporter</h1>
             <p><a href='/metrics'>Metrics</a></p>
         </body>
     </html>'''
@@ -241,7 +271,7 @@ def metrics():
 
 @APP.route("/metrics")
 def collect_metrics():
-    content = EipTools.query_data()
+    content = MetricData.web_get()
     resp = Response(content)
     resp.headers['Content-Type'] = 'text/plain'
     return resp
@@ -249,8 +279,9 @@ def collect_metrics():
 
 def main():
     EipTools.init_logger()
-    EipTools.init_task()
-    APP.run(port=GlobalConfig.port, debug=False)
+    config_info = EipTools.get_config_info()
+    EipTools.init_task(config_info)
+    APP.run(port=config_info["service_port"], debug=False)
 
 
 if __name__ == '__main__':

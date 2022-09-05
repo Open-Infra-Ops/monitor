@@ -1,0 +1,60 @@
+service_port: 8000
+kafka_server: 192.168.1.235:9092,192.168.1.196:9092,192.168.1.228:9092
+kafka_topic: aom-metrics
+kafka_consumer_id: prometheus_gateway
+metrics_info:
+  - item: node_cpu_seconds_total
+    type: gauge
+    name: node_cpu_seconds_total
+    desc: Scrape_node_cpu_seconds_total
+    labels: "node_name,cpu,model"
+  - item: node_memory_MemUsed
+    type: gauge
+    name: node_memory_MemUsed
+    desc: Scrape_node_memory_useage
+    labels: "node_name"
+  - item: node_filesystem_free_bytes
+    type: gauge
+    name: node_filesystem_free_bytes
+    desc: Scrape filesystem free space in bytes
+    labels: "node_name,device,fstype,mountpoint"
+  - item: node_filesystem_size_bytes
+    type: gauge
+    name: node_filesystem_size_bytes
+    desc: Scrape filesystem total size bytes
+    labels: "node_name,device,fstype,mountpoint"
+  - item: container_cpu_usage_seconds_total
+    type: gauge
+    name: container_cpu_usage_seconds_total
+    desc: Scrape_the_usage_seconds_total_of_cpu
+    labels: "job,cluster,namespace,pod,name"
+  - item: container_spec_cpu_quota
+    type: gauge
+    name: container_spec_cpu_quota
+    desc: Scrape_container_spec_cpu_quota
+    labels: "job,cluster,namespace,pod,name"
+  - item: container_spec_cpu_period
+    type: gauge
+    name: container_spec_cpu_period
+    desc: Scrape_container_spec_cpu_period
+    labels: "job,cluster,namespace,pod,name"
+  - item: container_memory_usage_bytes
+    type: gauge
+    name: container_memory_usage_bytes
+    desc: Scrape_container_memory_usage_bytes
+    labels: "job,cluster,namespace,pod,name"
+  - item: container_memory_max_usage_bytes
+    type: gauge
+    name: container_memory_max_usage_bytes
+    desc: Scrape_container_memory_max_usage_bytes
+    labels: "job,cluster,namespace,pod,name"
+  - item: container_fs_usage_bytes
+    type: gauge
+    name: container_fs_usage_bytes
+    desc: Scrape_container_fs_usage_bytes
+    labels: "job,cluster,namespace,pod,name"
+  - item: container_fs_limit_bytes
+    type: gauge
+    name: container_fs_limit_bytes
+    desc: Scrape_container_fs_limit_bytes
+    labels: "job,cluster,namespace,pod,name"
