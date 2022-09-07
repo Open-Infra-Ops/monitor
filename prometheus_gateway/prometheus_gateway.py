@@ -283,7 +283,7 @@ def main():
     EipTools.init_logger()
     config_info = EipTools.get_config_info()
     EipTools.init_task(config_info)
-    APP.run(port=config_info["service_port"], debug=False)
+    APP.run(host="0.0.0.0", port=config_info["service_port"], debug=False)
 
 
 if __name__ == '__main__':
