@@ -25,8 +25,8 @@ global:
   scrape_timeout: 60s
 
 scrape_configs:
-  - job_name: prometheus_gateway     # 针对于不同集群的同名的节点，可以修改job_name来做唯一性
-    metrics_path: "/metrics"    # promtheus-proxy设置的路径
+  - job_name: prometheus_gateway
+    metrics_path: "/metrics"
     static_configs:
       - targets: ["tomtoworld.xyz"]
 ~~~
