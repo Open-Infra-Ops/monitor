@@ -6,6 +6,8 @@
 import json
 import math
 import re
+import traceback
+
 import yaml
 import requests
 import logging
@@ -156,26 +158,35 @@ class EipTools(object):
 
     @classmethod
     def loop_collect_data(cls, config_info):
-        consumer = KafkaConsumer(config_info["kafka_topic"], bootstrap_servers=config_info["kafka_server"],
-                                 group_id=config_info["kafka_consumer_id"])
-        metrics_config = cls.parse_metrics_info(config_info)
-        for message in consumer:
-            content = message.value.decode("utf-8")
-            list_data = json.loads(content)
-            for metrics_info in list_data:
-                metrics_key_list = list(metrics_info["items"].values())
-                metrics_key_list.append(metrics_info["metrics"])
-                dict_data = {
-                    tuple(metrics_key_list): metrics_info["value"]
-                }
-                MetricData.set(dict_data)
-            # refresh web data
-            cur_metric_dict = MetricData.get()
-            expose_metric = ExposeMetric(cur_metric_dict, metrics_config)
-            expose_metric.set_metric_data(cur_metric_dict)
-            ret_metric = [m.str_expfmt() for m in expose_metric.metrics_dict.values()]
-            content = ''.join(ret_metric)
-            MetricData.web_set(content)
+        try:
+            logger.info("[loop_collect_data] start to initial kafka_consumer.")
+            consumer = KafkaConsumer(config_info["kafka_topic"], bootstrap_servers=config_info["kafka_server"],
+                                     group_id=config_info["kafka_consumer_id"])
+            metrics_config = cls.parse_metrics_info(config_info)
+            logger.info("[loop_collect_data] initial kafka_consumer ok.")
+            for message in consumer:
+                content = message.value.decode("utf-8")
+                list_data = json.loads(content)
+                logger.info("[loop_collect_data] receive data:{}".format(list_data))
+                for metrics_info in list_data:
+                    metrics_key_list = list(metrics_info["items"].values())
+                    metrics_key_list.append(metrics_info["metrics"])
+                    dict_data = {
+                        tuple(metrics_key_list): metrics_info["value"]
+                    }
+                    logger.info("[loop_collect_data] deal data:{}".format(dict_data))
+                    MetricData.set(dict_data)
+                # refresh web data
+                cur_metric_dict = MetricData.get()
+                logger.info("[loop_collect_data] web data:{}".format(cur_metric_dict))
+                expose_metric = ExposeMetric(cur_metric_dict, metrics_config)
+                expose_metric.set_metric_data(cur_metric_dict)
+                ret_metric = [m.str_expfmt() for m in expose_metric.metrics_dict.values()]
+                content = ''.join(ret_metric)
+                logger.info("[loop_collect_data] content data:{}".format(content))
+                MetricData.web_set(content)
+        except Exception as e:
+            logger.error("[loop_collect_data] {}, traceback:{}".format(e, traceback.format_exc()))
 
     @staticmethod
     def load_yaml(path=GlobalConfig.config_path):
