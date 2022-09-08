@@ -168,13 +168,14 @@ class EipTools(object):
                 try:
                     content = message.value.decode("utf-8")
                     list_data = json.loads(content)
-                    logger.info("[loop_collect_data] receive data:{}".format(list_data))
                     for metrics_info in list_data:
                         metrics_key_list = list(metrics_info["items"].values())
+                        metrics_key_list = [m.replace('"', '') for m in metrics_key_list]
                         metrics_key_list.append(metrics_info["metrics"])
                         dict_data = {
                             tuple(metrics_key_list): metrics_info["value"]
                         }
+                        logger.info("[loop_collect_data] set data:{}".format(list_data))
                         MetricData.set(dict_data)
                     # refresh web data
                     cur_metric_dict = MetricData.get()
