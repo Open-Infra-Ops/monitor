@@ -66,10 +66,13 @@ container_network_transmit_bytes_total  counter     容器网络累积传输数�
 
 
 采集的指标：
-container_cpu_load_average_10s          gauge       过去10秒容器CPU的平均负载
+container_cpu_usage_seconds_total
+container_spec_cpu_quota
+container_spec_cpu_period
+
 container_memory_usage_bytes            gauge       容器当前的内存使用量（单位：字节）
 container_memory_max_usage_bytes        gauge       容器的最大内存使用量（单位：字节）
 container_fs_usage_bytes                gauge       容器中文件系统的使用量(单位：字节)
 container_fs_limit_bytes                gauge       容器可以使用的文件系统总量(单位：字节)
 
-
+sum(rate(container_cpu_usage_seconds_total[5m])) by (pod, container,cluster, job) / sum(container_spec_cpu_quota/container_spec_cpu_period) by (pod, container, cluster, job)

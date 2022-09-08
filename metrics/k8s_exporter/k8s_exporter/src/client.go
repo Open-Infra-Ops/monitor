@@ -169,8 +169,14 @@ func checkParam(t MonItem) bool {
 
 // Write implements the Writer interface and writes metric samples to the database
 func (c *Client) Write(samples model.Samples) error {
+	startCountTime := time.Now()
 	serviceConfig := c.baseConfig
 	topics := serviceConfig.String("kafka::topic_name")
+	kafkaPartition := serviceConfig.String("kafka::kafkaPartition")
+	if kafkaPartition == "" {
+		kafkaPartition = "0"
+	}
+	kafkaPartitionInt, _ := strconv.ParseInt(kafkaPartition, 10, 32)
 	collectMonItemList := []CollectMonItem{}
 	for _, sample := range samples {
 		t := parseMetric(sample.Metric)
@@ -208,24 +214,29 @@ func (c *Client) Write(samples model.Samples) error {
 		return nil
 	}
 	paymentDataBuf, _ := json.Marshal(&collectMonItemList)
+	logs.Info("Collect data is:", string(paymentDataBuf))
 	err := c.kafkaClient.Produce(&kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: &topics, Partition: kafka.PartitionAny},
+		TopicPartition: kafka.TopicPartition{Topic: &topics, Partition: int32(kafkaPartitionInt)},
 		Value:          paymentDataBuf,
 	}, nil)
 	if err != nil {
 		logs.Info("send message fail, err: %v", err)
 		return err
 	}
-	for e := range c.kafkaClient.Events() {
-		switch ev := e.(type) {
-		case *kafka.Message:
-			if ev.TopicPartition.Error != nil {
-				logs.Info("Delivery failed: %v\n", ev.TopicPartition)
-			} else {
-				logs.Info("Delivered message to %v\n", ev.TopicPartition)
-			}
-		}
-	}
+	EndCountTime := time.Now()
+	spendTime := EndCountTime.Sub(startCountTime)
+	logs.Info("Collect spend time:", spendTime)
+	//kafka.PartitionAny
+	//for e := range c.kafkaClient.Events() {
+	//	switch ev := e.(type) {
+	//	case *kafka.Message:
+	//		if ev.TopicPartition.Error != nil {
+	//			logs.Info("Delivery failed: %v\n", ev.TopicPartition)
+	//		} else {
+	//			logs.Info("Delivered message to %v\n", ev.TopicPartition)
+	//		}
+	//	}
+	//}
 	return nil
 }
 
