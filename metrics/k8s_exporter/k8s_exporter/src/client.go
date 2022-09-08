@@ -191,7 +191,7 @@ func (c *Client) Write(samples model.Samples) error {
 		}
 		t.Value = value
 		itemsMap := make(map[string]string)
-		itemsMap["job"] = t.Job
+		itemsMap["account"] = t.Job
 		itemsMap["cluster"] = t.Cluster
 		itemsMap["namespace"] = t.NameSpace
 		itemsMap["pod"] = t.Pod
