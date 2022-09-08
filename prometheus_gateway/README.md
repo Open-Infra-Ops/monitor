@@ -38,37 +38,37 @@ metrics_info:  # 采集项目
     type: gauge
     name: container_cpu_usage_seconds_total
     desc: Scrape_the_usage_seconds_total_of_cpu
-    labels: "cluster,name,job,namespace,pod"
+    labels: "cluster,account,name,namespace,pod"
   - item: container_spec_cpu_quota
     type: gauge
     name: container_spec_cpu_quota
     desc: Scrape_container_spec_cpu_quota
-    labels: "cluster,name,job,namespace,pod"
+    labels: "cluster,account,name,namespace,pod"
   - item: container_spec_cpu_period
     type: gauge
     name: container_spec_cpu_period
     desc: Scrape_container_spec_cpu_period
-    labels: "cluster,name,job,namespace,pod"
+    labels: "cluster,account,name,namespace,pod"
   - item: container_memory_usage_bytes
     type: gauge
     name: container_memory_usage_bytes
     desc: Scrape_container_memory_usage_bytes
-    labels: "cluster,name,job,namespace,pod"
+    labels: "cluster,account,name,namespace,pod"
   - item: container_memory_max_usage_bytes
     type: gauge
     name: container_memory_max_usage_bytes
     desc: Scrape_container_memory_max_usage_bytes
-    labels: "cluster,name,job,namespace,pod"
+    labels: "cluster,account,name,namespace,pod"
   - item: container_fs_usage_bytes
     type: gauge
     name: container_fs_usage_bytes
     desc: Scrape_container_fs_usage_bytes
-    labels: "cluster,name,job,namespace,pod"
+    labels: "cluster,account,name,namespace,pod"
   - item: container_fs_limit_bytes
     type: gauge
     name: container_fs_limit_bytes
     desc: Scrape_container_fs_limit_bytes
-    labels: "cluster,name,job,namespace,pod"
+    labels: "cluster,account,name,namespace,pod"
 ~~~
 
 2.生成镜像
