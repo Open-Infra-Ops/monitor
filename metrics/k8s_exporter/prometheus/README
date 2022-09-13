@@ -66,17 +66,19 @@ container_network_transmit_bytes_total  counter     容器网络累积传输数�
 
 
 采集的指标：
-container_cpu_usage_seconds_total
-container_spec_cpu_quota
-container_spec_cpu_period
-container_memory_usage_bytes
-container_memory_max_usage_bytes
-container_fs_usage_bytes
-container_fs_limit_bytes
+container_cpu_usage_seconds_total counter
+container_spec_cpu_quota gauge
+container_spec_cpu_period gauge
+container_memory_working_set_bytes gauge
+container_spec_memory_limit_bytes gauge
+container_fs_usage_bytes gauge
+container_fs_limit_bytes gauge
 
 cpu使用率：
 sum(rate(container_cpu_usage_seconds_total[5m])) by (pod, container,namespace,cluster, account,name) / sum(container_spec_cpu_quota/container_spec_cpu_period) by (pod, container,namespace,cluster, account, name)
+
 内存使用率：
-container_memory_usage_bytes/container_memory_max_usage_bytes
+sum(container_memory_working_set_bytes) by(namespace, pod) / sum(container_spec_memory_limit_bytes) by(namespace, pod) * 100 != +inf
+
 硬盘使用率：
-container_fs_usage_bytes/container_fs_limit_bytes
+sum(container_fs_usage_bytes) by(pod, container,namespace,cluster, account,name) / sum(container_fs_limit_bytes) by(pod, container,namespace,cluster, account,name) * 100 != +inf

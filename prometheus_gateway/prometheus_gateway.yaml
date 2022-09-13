@@ -24,7 +24,7 @@ metrics_info:
     desc: Scrape filesystem total size bytes
     labels: "node_name,device,fstype,mountpoint"
   - item: container_cpu_usage_seconds_total
-    type: gauge
+    type: counter
     name: container_cpu_usage_seconds_total
     desc: Scrape_the_usage_seconds_total_of_cpu
     labels: "cluster,account,name,namespace,pod"
@@ -38,15 +38,15 @@ metrics_info:
     name: container_spec_cpu_period
     desc: Scrape_container_spec_cpu_period
     labels: "cluster,account,name,namespace,pod"
-  - item: container_memory_usage_bytes
+  - item: container_memory_working_set_bytes
     type: gauge
-    name: container_memory_usage_bytes
-    desc: Scrape_container_memory_usage_bytes
+    name: container_memory_working_set_bytes
+    desc: Scrape_container_memory_working_set_bytes
     labels: "cluster,account,name,namespace,pod"
-  - item: container_memory_max_usage_bytes
+  - item: container_spec_memory_limit_bytes
     type: gauge
-    name: container_memory_max_usage_bytes
-    desc: Scrape_container_memory_max_usage_bytes
+    name: container_spec_memory_limit_bytes
+    desc: Scrape_container_spec_memory_limit_bytes
     labels: "cluster,account,name,namespace,pod"
   - item: container_fs_usage_bytes
     type: gauge

@@ -114,9 +114,9 @@ func checkName(name string) bool {
 		isCheckOk = true
 	case "container_spec_cpu_period":
 		isCheckOk = true
-	case "container_memory_usage_bytes":
+	case "container_memory_working_set_bytes":
 		isCheckOk = true
-	case "container_memory_max_usage_bytes":
+	case "container_spec_memory_limit_bytes":
 		isCheckOk = true
 	case "container_fs_usage_bytes":
 		isCheckOk = true
