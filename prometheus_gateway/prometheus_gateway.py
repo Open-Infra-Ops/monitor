@@ -16,6 +16,7 @@ from flask import Flask, Response
 from threading import Thread, Lock, Event
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from logging.handlers import RotatingFileHandler
+from apscheduler.schedulers.background import BackgroundScheduler
 from kafka import KafkaConsumer
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -37,6 +38,11 @@ class MetricData(object):
 
     _cur_web_data = str()
     _web_lock = Lock()
+
+    @classmethod
+    def clear_metrics_data(cls):
+        with cls._lock:
+            cls._cur_metrics_data = dict()
 
     @classmethod
     def set(cls, metrics_data):
@@ -152,6 +158,7 @@ class EipTools(object):
     _lock = Lock()
     _event = Event()
     _metrics_config = None
+    _scheduler = BackgroundScheduler()
 
     def __init__(self, *args, **kwargs):
         super(EipTools, self).__init__(*args, **kwargs)
@@ -265,10 +272,17 @@ class EipTools(object):
         logger.addHandler(console_handler)
 
     @classmethod
+    def clean_web_data(cls):
+        MetricData.clear_metrics_data()
+
+    @classmethod
     def init_task(cls, config_info):
-        logger.info("##################start to collect thread#############")
+        logger.info("##################start thread to collect#############")
         th = Thread(target=cls.loop_collect_data, args=(config_info,), daemon=True)
         th.start()
+        logger.info("##################start timed thread to clean web data#############")
+        cls._scheduler.add_job(cls.clean_web_data, 'cron', hour='0')
+        cls._scheduler.start()
 
 
 @APP.route("/")
