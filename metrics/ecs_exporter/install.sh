@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+set +x
 bin_path="/opt/ecs_exporter"
 log_path="/var/log/ecs_exporter"
 etc_path="/etc/ecs_exporter"
@@ -40,5 +40,4 @@ if [ ! -f $service_path"/ecs_exporter.service" ]; then
 fi
 systemctl enable ecs_exporter.service
 systemctl start ecs_exporter.service
-echo "The service of ecs_exporter install successfully"
-
+echo "The service of ecs_exporter install finish"
