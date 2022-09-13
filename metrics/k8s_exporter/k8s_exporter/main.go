@@ -10,9 +10,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/Shopify/sarama"
 	"github.com/astaxie/beego/config"
 	"github.com/astaxie/beego/logs"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,11 +21,9 @@ import (
 	"io/ioutil"
 	prometheusClient "k8s_exporter/src"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
-	"os/signal"
+	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -102,18 +100,21 @@ func main() {
 	// 2.init log
 	prometheusClient.LogInit(serviceConfig)
 	// 3.init kafka
+	saramaConfig := sarama.NewConfig()
+	saramaConfig.Producer.RequiredAcks = sarama.WaitForAll
+	saramaConfig.Producer.Partitioner = sarama.NewRandomPartitioner
+	saramaConfig.Producer.Return.Successes = true
 	brokers := serviceConfig.String("kafka::brokers")
-	kafkaConfig := &kafka.ConfigMap{
-		"bootstrap.servers": brokers,
-	}
-	producer, err := kafka.NewProducer(kafkaConfig)
+	brokersSplit := strings.Split(brokers, ",")
+	kafkaClient, err := sarama.NewSyncProducer(brokersSplit, saramaConfig)
 	if err != nil {
-		logs.Info("producer error, err: %v", err)
+		logs.Info("producer closed, err:", err)
 		return
 	}
+	defer kafkaClient.Close()
 	// 4.start to web
 	serverAddr := serviceConfig.String("web::web-listen-address")
-	writer := buildClients(producer, serviceConfig)
+	writer := buildClients(&kafkaClient, &serviceConfig)
 	http.Handle("/write", timeHandler("write", write(writer)))
 	http.Handle("/", index())
 	logs.Info("msg", "Starting up...")
@@ -123,20 +124,10 @@ func main() {
 		logs.Error("msg", "Listen failure", "err", err)
 		os.Exit(1)
 	}
-	// 5.over kafka
-	// Wait for message deliveries before shutting down
-	sigterm := make(chan os.Signal, 1)
-	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case <-sigterm:
-		logs.Info("terminating: via signal")
-	}
-	producer.Flush(15 * 1000)
-	producer.Close()
 }
 
 // instantiate the client
-func buildClients(p *kafka.Producer, c config.Configer) writer {
+func buildClients(p *sarama.SyncProducer, c *config.Configer) writer {
 	mySqlClient := prometheusClient.NewClient(p, c)
 	return mySqlClient
 }

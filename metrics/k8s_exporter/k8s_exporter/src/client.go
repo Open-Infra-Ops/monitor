@@ -3,9 +3,9 @@ package PrometheusClient
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Shopify/sarama"
 	"github.com/astaxie/beego/config"
 	"github.com/astaxie/beego/logs"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/prometheus/common/model"
 	"math"
 	"strconv"
@@ -14,8 +14,8 @@ import (
 
 type Client struct {
 	TableList   []MonItem
-	kafkaClient *kafka.Producer
-	baseConfig  config.Configer
+	kafkaClient sarama.SyncProducer
+	baseConfig  *config.Configer
 }
 
 type MonItem struct {
@@ -37,9 +37,9 @@ type CollectMonItem struct {
 }
 
 // NewClient creates a new client
-func NewClient(p *kafka.Producer, c config.Configer) *Client {
+func NewClient(p *sarama.SyncProducer, c *config.Configer) *Client {
 	client := &Client{
-		kafkaClient: p,
+		kafkaClient: *p,
 		baseConfig:  c,
 	}
 	return client
@@ -170,13 +170,8 @@ func checkParam(t MonItem) bool {
 // Write implements the Writer interface and writes metric samples to the database
 func (c *Client) Write(samples model.Samples) error {
 	startCountTime := time.Now()
-	serviceConfig := c.baseConfig
+	serviceConfig := *c.baseConfig
 	topics := serviceConfig.String("kafka::topic_name")
-	kafkaPartition := serviceConfig.String("kafka::kafkaPartition")
-	if kafkaPartition == "" {
-		kafkaPartition = "0"
-	}
-	kafkaPartitionInt, _ := strconv.ParseInt(kafkaPartition, 10, 32)
 	collectMonItemList := []CollectMonItem{}
 	for _, sample := range samples {
 		t := parseMetric(sample.Metric)
@@ -215,28 +210,18 @@ func (c *Client) Write(samples model.Samples) error {
 	}
 	paymentDataBuf, _ := json.Marshal(&collectMonItemList)
 	logs.Info("Collect data is:", string(paymentDataBuf))
-	err := c.kafkaClient.Produce(&kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: &topics, Partition: int32(kafkaPartitionInt)},
-		Value:          paymentDataBuf,
-	}, nil)
+
+	msg := &sarama.ProducerMessage{}
+	msg.Topic = topics
+	msg.Value = sarama.StringEncoder(paymentDataBuf)
+	_, _, err := c.kafkaClient.SendMessage(msg)
 	if err != nil {
-		logs.Info("send message fail, err: %v", err)
-		return err
+		logs.Info("send msg failed, err:", err)
+		return nil
 	}
 	EndCountTime := time.Now()
 	spendTime := EndCountTime.Sub(startCountTime)
 	logs.Info("Collect spend time:", spendTime)
-	//kafka.PartitionAny
-	//for e := range c.kafkaClient.Events() {
-	//	switch ev := e.(type) {
-	//	case *kafka.Message:
-	//		if ev.TopicPartition.Error != nil {
-	//			logs.Info("Delivery failed: %v\n", ev.TopicPartition)
-	//		} else {
-	//			logs.Info("Delivered message to %v\n", ev.TopicPartition)
-	//		}
-	//	}
-	//}
 	return nil
 }
 
