@@ -78,7 +78,7 @@ cpu使用率：
 sum(rate(container_cpu_usage_seconds_total[5m])) by (pod, container,namespace,cluster, account,name) / sum(container_spec_cpu_quota/container_spec_cpu_period) by (pod, container,namespace,cluster, account, name)
 
 内存使用率：
-sum(container_memory_working_set_bytes) by(namespace, pod) / sum(container_spec_memory_limit_bytes) by(namespace, pod) * 100 != +inf
+sum(container_memory_working_set_bytes) by (pod, container,namespace,cluster, account,name) / sum(container_spec_memory_limit_bytes) by (pod, container,namespace,cluster, account,name) * 100 != +inf
 
 硬盘使用率：
 sum(container_fs_usage_bytes) by(pod, container,namespace,cluster, account,name) / sum(container_fs_limit_bytes) by(pod, container,namespace,cluster, account,name) * 100 != +inf
