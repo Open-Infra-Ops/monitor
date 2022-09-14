@@ -139,19 +139,25 @@ class ExposeMetric(object):
     def _setup_expose_metric(cur_metric_dict, metrics_config):
         metric_dict = dict()
         for tuple_info, _ in cur_metric_dict.items():
-            item = tuple_info[-1]
-            metrics_type = metrics_config[item]["type"]
-            metrics_name = metrics_config[item]["name"]
-            metrics_desc = metrics_config[item]["desc"]
-            metrics_labels = metrics_config[item]["labels"]
-            metric_dict[tuple_info] = Metric(metrics_type, metrics_name, metrics_desc, metrics_labels)
+            try:
+                item = tuple_info[-1]
+                metrics_type = metrics_config[item]["type"]
+                metrics_name = metrics_config[item]["name"]
+                metrics_desc = metrics_config[item]["desc"]
+                metrics_labels = metrics_config[item]["labels"]
+                metric_dict[tuple_info] = Metric(metrics_type, metrics_name, metrics_desc, metrics_labels)
+            except Exception as e:
+                logger.info("[_setup_expose_metric] {}".format(e))
         return metric_dict
 
     def set_metric_data(self, metric_dict):
         for tuple_info, value in metric_dict.items():
-            self.metrics_dict[tuple_info].clear()
-            value_temp = round(float(value), 4)
-            self.metrics_dict[tuple_info].set(value_temp, tuple_info[0:-1])
+            try:
+                self.metrics_dict[tuple_info].clear()
+                value_temp = round(float(value), 4)
+                self.metrics_dict[tuple_info].set(value_temp, tuple_info[0:-1])
+            except Exception as e:
+                logger.info("[set_metric_data] {}".format(e))
 
 
 class EipTools(object):
