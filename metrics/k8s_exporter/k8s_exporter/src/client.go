@@ -94,6 +94,8 @@ func parseMetric(m model.Metric) MonItem {
 		}
 		if pod, ok := labelStrings["pod"]; ok {
 			item.Pod = pod
+		} else if pod, ok = labelStrings["pod_name"]; ok {
+			item.Pod = pod
 		}
 		if container, ok := labelStrings["name"]; ok {
 			if container != "POD" {
@@ -170,8 +172,6 @@ func checkParam(t MonItem) bool {
 // Write implements the Writer interface and writes metric samples to the database
 func (c *Client) Write(samples model.Samples) error {
 	startCountTime := time.Now()
-	serviceConfig := *c.baseConfig
-	topics := serviceConfig.String("kafka::topic_name")
 	collectMonItemList := []CollectMonItem{}
 	for _, sample := range samples {
 		t := parseMetric(sample.Metric)
@@ -210,7 +210,8 @@ func (c *Client) Write(samples model.Samples) error {
 	}
 	paymentDataBuf, _ := json.Marshal(&collectMonItemList)
 	logs.Info("Collect data is:", string(paymentDataBuf))
-
+	serviceConfig := *c.baseConfig
+	topics := serviceConfig.String("kafka::topic_name")
 	msg := &sarama.ProducerMessage{}
 	msg.Topic = topics
 	msg.Value = sarama.StringEncoder(paymentDataBuf)
