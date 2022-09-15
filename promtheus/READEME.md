@@ -6,13 +6,33 @@
 
 ## 2.安装
 
-1.使用docker.io中的prometheus.
+### 1.制作prometheus镜像
+
+1.优先docker.io中的prometheus.
 
 ~~~~bash
 docker.io/prom/prometheus     latest       8c01021bb2f4        5 weeks ago         211 MB
 ~~~~
 
-2.修改配置文件
+2.制作x86的docker镜像
+
+~~~bash
+1.进入文件monitor\promtheus
+2.修改Dockerfile_x86改为Dockerfile: mv Dockerfile_x86 Dockerfile
+3.制作镜像
+docker build -t prometheus_prom:v1.0 .
+~~~
+
+3.制作arm的docker镜像
+
+~~~bash
+1.进入文件monitor\promtheus
+2.修改Dockerfile_arm改为Dockerfile: mv Dockerfile_arm Dockerfile
+3.制作镜像
+docker build -t prometheus_prom:v1.0 .
+~~~
+
+### 2.修改配置文件
 
 ~~~bash
 mkdir /opt/prometheus
@@ -31,7 +51,7 @@ scrape_configs:
       - targets: ["tomtoworld.xyz"]
 ~~~
 
-3.启动容器
+### 3.启动容器
 
 ~~~bash
 docker run -dit -p 9090:9090 -v /opt/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml -v /opt/prometheus/prometheus-data:/prometheus -v /opt/prometheus/conf:/etc/prometheus/conf --name prometheus prom/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention=1d 

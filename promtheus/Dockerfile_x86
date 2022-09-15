@@ -1,0 +1,20 @@
+FROM openeuler/openeuler
+
+MAINTAINER TomNewChao<tom_toworld@163.com>
+
+RUN yum install -y git curl wget tar
+RUN cd /root && wget https://github.com/prometheus/prometheus/releases/download/v2.37.1/prometheus-2.37.1.linux-amd64.tar.gz
+RUN tar -zxvf /root/prometheus-2.37.1.linux-amd64.tar.gz -C /root && mv /root/prometheus-2.37.1.linux-amd64 /root/prometheus
+RUN mkdir /etc/prometheus/ && mkdir -p /usr/share/prometheus/consoles/
+RUN cp /root/prometheus/prometheus /bin/prometheus
+RUN cp /root/prometheus/promtool /bin/promtool
+RUN cp /root/prometheus/prometheus.yml /etc/prometheus/prometheus.yml
+RUN cp /root/prometheus/console_libraries/ /usr/share/prometheus/console_libraries/ -r
+RUN cp /root/prometheus/consoles/  /usr/share/prometheus/consoles/ -r
+
+RUN ln -s /usr/share/prometheus/console_libraries /usr/share/prometheus/consoles/ /etc/prometheus/
+RUN mkdir -p /prometheus
+
+WORKDIR    /prometheus
+EXPOSE     9090
+ENTRYPOINT [ "/bin/prometheus", "--config.file=/etc/prometheus/prometheus.yml",  "--storage.tsdb.path=/prometheus", "--web.console.libraries=/usr/share/prometheus/console_libraries"]
