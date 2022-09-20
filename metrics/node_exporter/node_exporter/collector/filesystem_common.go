@@ -163,7 +163,7 @@ func (c *filesystemCollector) Update(ch chan<- prometheus.Metric) error {
 		if s.size <= 0 {
 			continue
 		}
-		use_ratio := (s.size - s.free) / s.size
+		use_ratio := ((s.size - s.free) / s.size) * 100
 		ch <- prometheus.MustNewConstMetric(
 			c.usePer, prometheus.GaugeValue,
 			use_ratio, s.labels.device, s.labels.mountPoint, s.labels.fsType)
