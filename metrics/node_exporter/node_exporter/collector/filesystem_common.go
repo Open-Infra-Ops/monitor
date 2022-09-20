@@ -116,8 +116,8 @@ func NewFilesystemCollector() (Collector, error) {
 	)
 
 	useDesc := prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, subsystem, "use_percent"),
-		"Filesystem use percent.",
+		prometheus.BuildFQName(namespace, subsystem, "usage_rate"),
+		"Filesystem use rate.",
 		filesystemLabelNames, nil,
 	)
 
@@ -160,13 +160,13 @@ func (c *filesystemCollector) Update(ch chan<- prometheus.Metric) error {
 			c.freeDesc, prometheus.GaugeValue,
 			s.free, s.labels.device, s.labels.mountPoint, s.labels.fsType,
 		)
-		//if s.size < 0 {
-		//	continue
-		//}
-		//use_ratio := (s.size - s.free) / s.size
-		//ch <- prometheus.MustNewConstMetric(
-		//	c.usePer, prometheus.GaugeValue,
-		//	use_ratio, s.labels.device, s.labels.mountPoint, s.labels.fsType)
+		if s.size <= 0 {
+			continue
+		}
+		use_ratio := (s.size - s.free) / s.size
+		ch <- prometheus.MustNewConstMetric(
+			c.usePer, prometheus.GaugeValue,
+			use_ratio, s.labels.device, s.labels.mountPoint, s.labels.fsType)
 		//ch <- prometheus.MustNewConstMetric(
 		//	c.availDesc, prometheus.GaugeValue,
 		//	s.avail, s.labels.device, s.labels.mountPoint, s.labels.fsType,
