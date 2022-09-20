@@ -58,3 +58,18 @@ metrics_info:
     name: container_fs_limit_bytes
     desc: Scrape_container_fs_limit_bytes
     labels: "cluster,account,name,namespace,pod"
+  - item: container_cpu_usage_rate
+    type: gauge
+    name: container_cpu_usage_rate
+    desc: Scrape_container_cpu_usage_rate
+    labels: "cluster,account,name,namespace,pod"
+  - item: container_mem_usage_rate
+    type: gauge
+    name: container_mem_usage_rate
+    desc: Scrape_container_mem_usage_rate
+    labels: "cluster,account,name,namespace,pod"
+  - item: container_fs_usage_rate
+    type: gauge
+    name: container_fs_usage_rate
+    desc: Scrape_container_fs_usage_rate
+    labels: "cluster,account,name,namespace,pod"

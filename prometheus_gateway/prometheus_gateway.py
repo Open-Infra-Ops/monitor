@@ -196,7 +196,6 @@ class EipTools(object):
                     expose_metric.set_metric_data(cur_metric_dict)
                     ret_metric = [m.str_expfmt() for m in expose_metric.metrics_dict.values()]
                     content = ''.join(ret_metric)
-                    logger.info("[loop_collect_data] content data:{}".format(content))
                     MetricData.web_set(content)
                 except Exception as e:
                     logger.error("[loop_collect_data] parse {}, traceback:{}".format(e, traceback.format_exc()))

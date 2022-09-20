@@ -15,7 +15,6 @@ import (
 	"github.com/astaxie/beego/logs"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"io/ioutil"
@@ -23,62 +22,16 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync/atomic"
-	"time"
 )
 
-type JsonResult struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
+// write interface
+type writer interface {
+	Write(samples model.Samples) error
+	Name() string
 }
 
-var (
-	receivedSamples = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "received_samples_total",
-			Help: "Total number of received samples.",
-		},
-	)
-	sentSamples = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "sent_samples_total",
-			Help: "Total number of processed samples sent to remote storage.",
-		},
-		[]string{"remote"},
-	)
-	failedSamples = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "failed_samples_total",
-			Help: "Total number of processed samples which failed on send to remote storage.",
-		},
-		[]string{"remote"},
-	)
-	sentBatchDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "sent_batch_duration_seconds",
-			Help:    "Duration of sample batch send calls to the remote storage.",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"remote"},
-	)
-	httpRequestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "http_request_duration_ms",
-			Help:    "Duration of HTTP request in milliseconds",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"path"},
-	)
-	lastRequestUnixNano = time.Now().UnixNano()
-)
-
-func init() {
-	prometheus.MustRegister(receivedSamples)
-	prometheus.MustRegister(sentSamples)
-	prometheus.MustRegister(failedSamples)
-	prometheus.MustRegister(sentBatchDuration)
-	prometheus.MustRegister(httpRequestDuration)
-}
+// noOpWriter struct
+type noOpWriter struct{}
 
 // read config
 func readConfig() (e error, c config.Configer) {
@@ -90,60 +43,11 @@ func readConfig() (e error, c config.Configer) {
 	return nil, BConfig
 }
 
-func main() {
-	// 1.first to read config
-	err, serviceConfig := readConfig()
-	if err != nil {
-		fmt.Println("main:get config error")
-		return
-	}
-	// 2.init log
-	prometheusClient.LogInit(serviceConfig)
-	// 3.init kafka
-	saramaConfig := sarama.NewConfig()
-	saramaConfig.Producer.RequiredAcks = sarama.WaitForAll
-	saramaConfig.Producer.Partitioner = sarama.NewRandomPartitioner
-	saramaConfig.Producer.Return.Successes = true
-	brokers := serviceConfig.String("kafka::brokers")
-	brokersSplit := strings.Split(brokers, ",")
-	kafkaClient, err := sarama.NewSyncProducer(brokersSplit, saramaConfig)
-	if err != nil {
-		logs.Info("producer closed, err:", err)
-		return
-	}
-	defer kafkaClient.Close()
-	// 4.start to web
-	serverAddr := serviceConfig.String("web::web-listen-address")
-	writer := buildClients(&kafkaClient, &serviceConfig)
-	http.Handle("/write", timeHandler("write", write(writer)))
-	http.Handle("/", index())
-	logs.Info("msg", "Starting up...")
-	logs.Info("msg", "Listening", "addr", serverAddr)
-	err = http.ListenAndServe(serverAddr, nil)
-	if err != nil {
-		logs.Error("msg", "Listen failure", "err", err)
-		os.Exit(1)
-	}
-}
-
 // instantiate the client
 func buildClients(p *sarama.SyncProducer, c *config.Configer) writer {
 	mySqlClient := prometheusClient.NewClient(p, c)
 	return mySqlClient
 }
-
-type reader interface {
-	Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error)
-	Name() string
-	HealthCheck() error
-}
-
-type writer interface {
-	Write(samples model.Samples) error
-	Name() string
-}
-
-type noOpWriter struct{}
 
 func (no *noOpWriter) Write(samples model.Samples) error {
 	logs.Debug("msg", "Noop writer", "num_samples", len(samples))
@@ -173,21 +77,7 @@ func protoToSamples(req *prompb.WriteRequest) model.Samples {
 	return samples
 }
 
-func sendSamples(w writer, samples model.Samples) error {
-	atomic.StoreInt64(&lastRequestUnixNano, time.Now().UnixNano())
-	begin := time.Now()
-	var err error
-	err = w.Write(samples)
-	duration := time.Since(begin).Seconds()
-	if err != nil {
-		failedSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
-		return err
-	}
-	sentSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
-	sentBatchDuration.WithLabelValues(w.Name()).Observe(duration)
-	return nil
-}
-
+// write: Prometheus push data to this api, and handler data to kafka
 func write(writer writer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		compressed, err := ioutil.ReadAll(r.Body)
@@ -212,15 +102,14 @@ func write(writer writer) http.Handler {
 		}
 
 		samples := protoToSamples(&req)
-		receivedSamples.Add(float64(len(samples)))
-
-		err = sendSamples(writer, samples)
+		err = writer.Write(samples)
 		if err != nil {
 			logs.Info("msg", "Error sending samples to remote storage", "err", err, "storage", writer.Name(), "num_samples", len(samples))
 		}
 	})
 }
 
+// index: test the k8s-exporter service is ok.
 func index() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		indexTemplates := `<!DOCTYPE html>
@@ -240,13 +129,47 @@ func index() http.Handler {
 	})
 }
 
-// timeHandler uses Prometheus histogram to track request time
-func timeHandler(path string, handler http.Handler) http.Handler {
-	f := func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		handler.ServeHTTP(w, r)
-		elapsedMs := time.Since(start).Nanoseconds() / int64(time.Millisecond)
-		httpRequestDuration.WithLabelValues(path).Observe(float64(elapsedMs))
+func main() {
+	// 1.first to read config
+	err, serviceConfig := readConfig()
+	if err != nil {
+		fmt.Println("main:Get config err:", err)
+		return
 	}
-	return http.HandlerFunc(f)
+	// 2.init log
+	prometheusClient.LogInit(serviceConfig)
+	// 3.init kafka
+	saramaConfig := sarama.NewConfig()
+	saramaConfig.Producer.RequiredAcks = sarama.WaitForAll
+	saramaConfig.Producer.Partitioner = sarama.NewRandomPartitioner
+	saramaConfig.Producer.Return.Successes = true
+	brokers := serviceConfig.String("kafka::brokers")
+	brokersSplit := strings.Split(brokers, ",")
+	kafkaClient, err := sarama.NewSyncProducer(brokersSplit, saramaConfig)
+	if err != nil {
+		logs.Error("main: Producer closed, err:", err)
+		return
+	}
+	defer func(kafkaClient sarama.SyncProducer) {
+		err := kafkaClient.Close()
+		if err != nil {
+			logs.Error("main: close kafkaClient err:", err)
+		}
+	}(kafkaClient)
+	// 4.Start the coroutine to start the collection
+	go prometheusClient.StartCpuRateCollect(kafkaClient, serviceConfig)
+	go prometheusClient.StartMemRateCollect(kafkaClient, serviceConfig)
+	go prometheusClient.StartFsRateCollect(kafkaClient, serviceConfig)
+	// 5.start to web
+	serverAddr := serviceConfig.String("web::web-listen-address")
+	writer := buildClients(&kafkaClient, &serviceConfig)
+	http.Handle("/write", write(writer))
+	http.Handle("/", index())
+	logs.Info("msg", "Starting up...")
+	logs.Info("msg", "Listening", "addr", serverAddr)
+	err = http.ListenAndServe(serverAddr, nil)
+	if err != nil {
+		logs.Error("msg", "Listen failure", "err", err)
+		os.Exit(1)
+	}
 }
