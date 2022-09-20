@@ -23,6 +23,11 @@ metrics_info:
     name: node_filesystem_size_bytes
     desc: Scrape filesystem total size bytes
     labels: "node_name,device,fstype,mountpoint"
+  - item: node_filesystem_usage_rate
+    type: gauge
+    name: node_filesystem_usage_rate
+    desc: Scrape filesystem useage rate
+    labels: "node_name,device,fstype,mountpoint"
   - item: container_cpu_usage_seconds_total
     type: counter
     name: container_cpu_usage_seconds_total
