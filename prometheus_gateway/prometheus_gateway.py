@@ -3,9 +3,11 @@
 # @Author  : Tom_zc
 # @FileName: prometheus_gateway.py
 # @Software: PyCharm
+import copy
 import json
 import math
 import re
+import time
 import traceback
 
 import yaml
@@ -28,6 +30,7 @@ logger = logging.getLogger('prometheus_gateway')
 
 class GlobalConfig(object):
     config_path = "/opt/prometheus_gateway/prometheus_gateway.yaml"
+    expired_time = 20
     # config_path = "prometheus_gateway.yaml"
 
 
@@ -40,9 +43,18 @@ class MetricData(object):
     _web_lock = Lock()
 
     @classmethod
-    def clear_metrics_data(cls):
+    def clear_expired_metrics_data(cls):
         with cls._lock:
-            cls._cur_metrics_data = dict()
+            try:
+                cur_timestamps = int(time.time())
+                temp = copy.deepcopy(cls._cur_metrics_data)
+                for key, value_dict in cls._cur_metrics_data.items():
+                    if cur_timestamps - int(value_dict["time"]) >= GlobalConfig.expired_time * 60:
+                        del temp[key]
+                cls._cur_metrics_data = temp
+            except Exception as e:
+                logger.error("[clear_expired_metrics_data] {}".format(e))
+                cls._cur_metrics_data = dict()
 
     @classmethod
     def set(cls, metrics_data):
@@ -151,10 +163,10 @@ class ExposeMetric(object):
         return metric_dict
 
     def set_metric_data(self, metric_dict):
-        for tuple_info, value in metric_dict.items():
+        for tuple_info, value_dict in metric_dict.items():
             try:
                 self.metrics_dict[tuple_info].clear()
-                value_temp = round(float(value), 4)
+                value_temp = round(float(value_dict["value"]), 4)
                 self.metrics_dict[tuple_info].set(value_temp, tuple_info[0:-1])
             except Exception as e:
                 logger.info("[set_metric_data] {}".format(e))
@@ -186,7 +198,10 @@ class EipTools(object):
                         metrics_key_list = [m.replace('"', '') for m in metrics_key_list]
                         metrics_key_list.append(metrics_info["metrics"])
                         dict_data = {
-                            tuple(metrics_key_list): metrics_info["value"]
+                            tuple(metrics_key_list): {
+                                "value": metrics_info["value"],
+                                "time": metrics_info["time"]
+                            }
                         }
                         logger.info("[loop_collect_data] set data:{}".format(list_data))
                         MetricData.set(dict_data)
@@ -264,7 +279,7 @@ class EipTools(object):
         global logger
         logger.setLevel(level=logging.INFO)
         formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-        size_rotate_file = RotatingFileHandler(filename='prometheus_gateway.log', maxBytes=5 * 1024 * 1024,
+        size_rotate_file = RotatingFileHandler(filename='prometheus_gateway.log', maxBytes=10 * 1024 * 1024,
                                                backupCount=10)
         size_rotate_file.setFormatter(formatter)
         size_rotate_file.setLevel(logging.INFO)
@@ -277,8 +292,9 @@ class EipTools(object):
         logger.addHandler(console_handler)
 
     @classmethod
-    def clean_web_data(cls):
-        MetricData.clear_metrics_data()
+    def clean_expired_web_data(cls):
+        logger.info("[clean_expired_web_data] clean time is {}".format(int(time.time())))
+        MetricData.clear_expired_metrics_data()
 
     @classmethod
     def init_task(cls, config_info):
@@ -286,7 +302,7 @@ class EipTools(object):
         th = Thread(target=cls.loop_collect_data, args=(config_info,), daemon=True)
         th.start()
         logger.info("##################start timed thread to clean web data#############")
-        cls._scheduler.add_job(cls.clean_web_data, 'cron', hour='0')
+        cls._scheduler.add_job(cls.clean_expired_web_data, 'interval', minutes=GlobalConfig.expired_time)
         cls._scheduler.start()
 
 
