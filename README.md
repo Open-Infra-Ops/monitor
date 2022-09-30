@@ -16,7 +16,11 @@
 
 ## 3.解决方案
 
-​		<img src="doc/solution.png" alt="解决方案"/>
+部署图：
+
+<img src="doc/solution.png" alt="解决方案"/>
+
+注意：不同集群的exporter订阅的kafka的topic是不同的，相应的prometheus_gateway也是不同的。
 
 ## 4.部署方案
 
