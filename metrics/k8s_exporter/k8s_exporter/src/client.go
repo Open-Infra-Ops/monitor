@@ -14,6 +14,10 @@ import (
 )
 
 const (
+	cpuOldRateQuery = `/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total[5m]))by(job,cluster,namespace,name,pod)/sum(container_spec_cpu_quota/container_spec_cpu_period)by(job,cluster,namespace,name,pod)&time=`
+	memOldRateQuery = `/api/v1/query?query=sum(container_memory_working_set_bytes)by(job,cluster,namespace,name,pod)/sum(container_spec_memory_limit_bytes)by(job,cluster,namespace,name,pod)*100!=+inf&time=`
+	fsOldRateQuery  = `/api/v1/query?query=sum(container_fs_usage_bytes)by(job,cluster,namespace,name,pod)/sum(container_fs_limit_bytes)by(job,cluster,namespace,name,pod)*100!=+inf&time=`
+
 	cpuRateQuery = `/api/v1/query?query=sum%28rate%28container_cpu_usage_seconds_total%5B5m%5D%29%29+by+%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+%2F+sum%28container_spec_cpu_quota%2Fcontainer_spec_cpu_period%29+by+%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+*+100+%21%3D+%2Binf&time=`
 	memRateQuery = `/api/v1/query?query=sum%28container_memory_working_set_bytes%29+by+%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+%2F+sum%28container_spec_memory_limit_bytes%29+by+%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+*+100+%21%3D+%2Binf&time=`
 	fsRateQuery  = `/api/v1/query?query=sum%28container_fs_usage_bytes%29+by%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+%2F+sum%28container_fs_limit_bytes%29+by%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+*+100+%21%3D+%2Binf&time=`
@@ -63,6 +67,28 @@ type PrometheusData struct {
 type PrometheusResponse struct {
 	Data   PrometheusData `json:"data"`
 	Status string         `json:"status"`
+}
+
+type OldPrometheusMetricData struct {
+	Job       string `json:"job"`
+	Name      string `json:"name"`
+	NameSpace string `json:"namespace"`
+	Pod       string `json:"pod"`
+}
+
+type OldPrometheusMetricObj struct {
+	Metric OldPrometheusMetricData `json:"metric"`
+	Value  []interface{}           `json:"value"`
+}
+
+type OldPrometheusData struct {
+	Result     []OldPrometheusMetricObj `json:"result"`
+	ResultType string                   `json:"resultType"`
+}
+
+type OldPrometheusResponse struct {
+	Data   OldPrometheusData `json:"data"`
+	Status string            `json:"status"`
 }
 
 // Name identifies the client as a client.
@@ -206,6 +232,15 @@ func checkPrometheusParam(v PrometheusMetricData) bool {
 	}
 }
 
+// private func: check job and name and namespace and pod is empty, and it is for the old version of k8s
+func checkOldPrometheusParam(v OldPrometheusMetricData) bool {
+	if v.Pod == "" || v.Name == "" || v.Job == "" || v.NameSpace == "" {
+		return false
+	} else {
+		return true
+	}
+}
+
 // private func: parse prometheus value
 func parsePrometheusValue(i interface{}) float64 {
 	var value float64
@@ -322,23 +357,94 @@ func CollectRateData(p sarama.SyncProducer, c config.Configer, cn string, qu str
 	return nil
 }
 
+// CollectOldRateData Collect the new version k8s of rate data
+func CollectOldRateData(p sarama.SyncProducer, c config.Configer, cn string, qu string) error {
+	// 1 request prometheus data
+	curTimeStamps := time.Now().Unix()
+	prometheusUrl := c.String("prometheus::url")
+	RateQueryFull := fmt.Sprintf(`%s%s%s`, prometheusUrl, qu, strconv.FormatInt(curTimeStamps, 10))
+	resp, err := http.Get(RateQueryFull)
+	if err != nil {
+		logs.Error("[CollectRateData] request data failed! qu: %s, err:%s", qu, err)
+		return err
+	}
+	// 2. parse data
+	promResp := OldPrometheusResponse{}
+	err = json.NewDecoder(resp.Body).Decode(&promResp)
+	if err != nil {
+		logs.Error("[CollectRateData] decode data failed! qu: %s, err:%s", qu, err)
+		return err
+	}
+	collectMonItemList := []CollectMonItem{}
+	for _, v := range promResp.Data.Result {
+		if !checkNamespace(v.Metric.NameSpace) {
+			continue
+		} else if !checkOldPrometheusParam(v.Metric) {
+			continue
+		}
+		value := parsePrometheusValue(v.Value[1])
+		itemsMap := make(map[string]string)
+		itemsMap["account"] = v.Metric.Job
+		itemsMap["cluster"] = v.Metric.Job
+		itemsMap["namespace"] = v.Metric.NameSpace
+		itemsMap["pod"] = v.Metric.Pod
+		itemsMap["container"] = v.Metric.Name
+		c := CollectMonItem{
+			Metrics: cn,
+			Items:   itemsMap,
+			Value:   strconv.FormatFloat(value, 'E', -1, 64),
+			Time:    fmt.Sprintf("%d", time.Now().Unix()),
+		}
+		collectMonItemList = append(collectMonItemList, c)
+	}
+	if len(collectMonItemList) == 0 {
+		return nil
+	}
+	// 3.send data to kafka
+	paymentDataBuf, _ := json.Marshal(&collectMonItemList)
+	logs.Info("Collect rate data is:", string(paymentDataBuf))
+	topics := c.String("kafka::topic_name")
+	msg := &sarama.ProducerMessage{}
+	msg.Topic = topics
+	msg.Value = sarama.StringEncoder(paymentDataBuf)
+	_, _, err = p.SendMessage(msg)
+	if err != nil {
+		logs.Info("send msg failed, err:", err)
+		return err
+	}
+	return nil
+}
+
 // StartCpuRateCollect Start a coroutine to collect cpu data
 func StartCpuRateCollect(p sarama.SyncProducer, c config.Configer) {
 	intervalTimer, _ := c.Int64("prometheus::interval")
+	podName := c.String("prometheus::pod_name")
 	for range time.Tick(time.Duration(intervalTimer) * time.Second) {
 		cn := "container_cpu_usage_rate"
-		qu := cpuRateQuery
-		_ = CollectRateData(p, c, cn, qu)
+		if podName == "pod" {
+			qu := cpuOldRateQuery
+			_ = CollectOldRateData(p, c, cn, qu)
+		} else {
+			qu := cpuRateQuery
+			_ = CollectRateData(p, c, cn, qu)
+		}
 	}
 }
 
 // StartMemRateCollect Start a coroutine to collect mem data
 func StartMemRateCollect(p sarama.SyncProducer, c config.Configer) {
 	intervalTimer, _ := c.Int64("prometheus::interval")
+	podName := c.String("prometheus::pod_name")
 	for range time.Tick(time.Duration(intervalTimer) * time.Second) {
 		cn := "container_mem_usage_rate"
-		qu := memRateQuery
-		_ = CollectRateData(p, c, cn, qu)
+		if podName == "pod" {
+			qu := memOldRateQuery
+			_ = CollectOldRateData(p, c, cn, qu)
+		} else {
+			qu := memRateQuery
+			_ = CollectRateData(p, c, cn, qu)
+		}
+
 	}
 
 }
@@ -346,10 +452,17 @@ func StartMemRateCollect(p sarama.SyncProducer, c config.Configer) {
 // StartFsRateCollect Start a coroutine to collect fs data
 func StartFsRateCollect(p sarama.SyncProducer, c config.Configer) {
 	intervalTimer, _ := c.Int64("prometheus::interval")
+	podName := c.String("prometheus::pod_name")
 	for range time.Tick(time.Duration(intervalTimer) * time.Second) {
 		cn := "container_fs_usage_rate"
-		qu := fsRateQuery
-		_ = CollectRateData(p, c, cn, qu)
+		if podName == "pod" {
+			qu := fsOldRateQuery
+			_ = CollectOldRateData(p, c, cn, qu)
+		} else {
+			qu := fsRateQuery
+			_ = CollectRateData(p, c, cn, qu)
+		}
+
 	}
 
 }
