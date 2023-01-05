@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 )
@@ -418,10 +419,10 @@ func CollectOldRateData(p sarama.SyncProducer, c config.Configer, cn string, qu 
 // StartCpuRateCollect Start a coroutine to collect cpu data
 func StartCpuRateCollect(p sarama.SyncProducer, c config.Configer) {
 	intervalTimer, _ := c.Int64("prometheus::interval")
-	podName := c.String("prometheus::pod_name")
+	kubeVersion := os.Getenv("K8S_VERSION")
 	for range time.Tick(time.Duration(intervalTimer) * time.Second) {
 		cn := "container_cpu_usage_rate"
-		if podName == "pod" {
+		if kubeVersion == "old" {
 			qu := cpuOldRateQuery
 			_ = CollectOldRateData(p, c, cn, qu)
 		} else {
@@ -434,10 +435,10 @@ func StartCpuRateCollect(p sarama.SyncProducer, c config.Configer) {
 // StartMemRateCollect Start a coroutine to collect mem data
 func StartMemRateCollect(p sarama.SyncProducer, c config.Configer) {
 	intervalTimer, _ := c.Int64("prometheus::interval")
-	podName := c.String("prometheus::pod_name")
+	kubeVersion := os.Getenv("K8S_VERSION")
 	for range time.Tick(time.Duration(intervalTimer) * time.Second) {
 		cn := "container_mem_usage_rate"
-		if podName == "pod" {
+		if kubeVersion == "old" {
 			qu := memOldRateQuery
 			_ = CollectOldRateData(p, c, cn, qu)
 		} else {
@@ -452,10 +453,10 @@ func StartMemRateCollect(p sarama.SyncProducer, c config.Configer) {
 // StartFsRateCollect Start a coroutine to collect fs data
 func StartFsRateCollect(p sarama.SyncProducer, c config.Configer) {
 	intervalTimer, _ := c.Int64("prometheus::interval")
-	podName := c.String("prometheus::pod_name")
+	kubeVersion := os.Getenv("K8S_VERSION")
 	for range time.Tick(time.Duration(intervalTimer) * time.Second) {
 		cn := "container_fs_usage_rate"
-		if podName == "pod" {
+		if kubeVersion == "old" {
 			qu := fsOldRateQuery
 			_ = CollectOldRateData(p, c, cn, qu)
 		} else {
