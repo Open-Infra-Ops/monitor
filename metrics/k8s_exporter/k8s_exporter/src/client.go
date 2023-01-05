@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	cpuOldRateQuery = `/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total[5m]))by(job,cluster,namespace,name,pod)/sum(container_spec_cpu_quota/container_spec_cpu_period)by(job,cluster,namespace,name,pod)&time=`
-	memOldRateQuery = `/api/v1/query?query=sum(container_memory_working_set_bytes)by(job,cluster,namespace,name,pod)/sum(container_spec_memory_limit_bytes)by(job,cluster,namespace,name,pod)*100!=+inf&time=`
-	fsOldRateQuery  = `/api/v1/query?query=sum(container_fs_usage_bytes)by(job,cluster,namespace,name,pod)/sum(container_fs_limit_bytes)by(job,cluster,namespace,name,pod)*100!=+inf&time=`
+	cpuNewRateQuery = `/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total[5m]))by(job,cluster,namespace,name,pod)/sum(container_spec_cpu_quota/container_spec_cpu_period)by(job,cluster,namespace,name,pod)&time=`
+	memNewRateQuery = `/api/v1/query?query=sum(container_memory_working_set_bytes)by(job,cluster,namespace,name,pod)/sum(container_spec_memory_limit_bytes)by(job,cluster,namespace,name,pod)*100!=+inf&time=`
+	fsNewRateQuery  = `/api/v1/query?query=sum(container_fs_usage_bytes)by(job,cluster,namespace,name,pod)/sum(container_fs_limit_bytes)by(job,cluster,namespace,name,pod)*100!=+inf&time=`
 
 	cpuRateQuery = `/api/v1/query?query=sum%28rate%28container_cpu_usage_seconds_total%5B5m%5D%29%29+by+%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+%2F+sum%28container_spec_cpu_quota%2Fcontainer_spec_cpu_period%29+by+%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+*+100+%21%3D+%2Binf&time=`
 	memRateQuery = `/api/v1/query?query=sum%28container_memory_working_set_bytes%29+by+%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+%2F+sum%28container_spec_memory_limit_bytes%29+by+%28job%2C+cluster%2Cnamespace%2Cname%2C+pod_name%29+*+100+%21%3D+%2Binf&time=`
@@ -358,8 +358,8 @@ func CollectRateData(p sarama.SyncProducer, c config.Configer, cn string, qu str
 	return nil
 }
 
-// CollectOldRateData Collect the new version k8s of rate data
-func CollectOldRateData(p sarama.SyncProducer, c config.Configer, cn string, qu string) error {
+// CollectNewRateData Collect the new version k8s of rate data
+func CollectNewRateData(p sarama.SyncProducer, c config.Configer, cn string, qu string) error {
 	// 1 request prometheus data
 	curTimeStamps := time.Now().Unix()
 	prometheusUrl := c.String("prometheus::url")
@@ -422,9 +422,9 @@ func StartCpuRateCollect(p sarama.SyncProducer, c config.Configer) {
 	kubeVersion := os.Getenv("K8S_VERSION")
 	for range time.Tick(time.Duration(intervalTimer) * time.Second) {
 		cn := "container_cpu_usage_rate"
-		if kubeVersion == "old" {
-			qu := cpuOldRateQuery
-			_ = CollectOldRateData(p, c, cn, qu)
+		if kubeVersion == "new" {
+			qu := cpuNewRateQuery
+			_ = CollectNewRateData(p, c, cn, qu)
 		} else {
 			qu := cpuRateQuery
 			_ = CollectRateData(p, c, cn, qu)
@@ -438,9 +438,9 @@ func StartMemRateCollect(p sarama.SyncProducer, c config.Configer) {
 	kubeVersion := os.Getenv("K8S_VERSION")
 	for range time.Tick(time.Duration(intervalTimer) * time.Second) {
 		cn := "container_mem_usage_rate"
-		if kubeVersion == "old" {
-			qu := memOldRateQuery
-			_ = CollectOldRateData(p, c, cn, qu)
+		if kubeVersion == "new" {
+			qu := memNewRateQuery
+			_ = CollectNewRateData(p, c, cn, qu)
 		} else {
 			qu := memRateQuery
 			_ = CollectRateData(p, c, cn, qu)
@@ -456,9 +456,9 @@ func StartFsRateCollect(p sarama.SyncProducer, c config.Configer) {
 	kubeVersion := os.Getenv("K8S_VERSION")
 	for range time.Tick(time.Duration(intervalTimer) * time.Second) {
 		cn := "container_fs_usage_rate"
-		if kubeVersion == "old" {
-			qu := fsOldRateQuery
-			_ = CollectOldRateData(p, c, cn, qu)
+		if kubeVersion == "new" {
+			qu := fsNewRateQuery
+			_ = CollectNewRateData(p, c, cn, qu)
 		} else {
 			qu := fsRateQuery
 			_ = CollectRateData(p, c, cn, qu)

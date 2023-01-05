@@ -72,8 +72,8 @@ interval = 60 # prometheus的采集时间
 ~~~bash
 K8S_VERSION=old/new
 如何判断K8S_VERSION的版本为旧版本(old)还是新版本(new)？
-查询prometheus, 如果能以pod进行查询, 并且返回字段包含pod， 则为老版本。
-查询prometheus, 如果能以pod_name进行查询, 并且返回字段包含pod_name， 则为新版本。
+查询prometheus, 如果能以pod_name进行查询, 并且返回字段包含pod_name， 则为老版本（old）。
+查询prometheus, 如果能以pod进行查询, 并且返回字段包含pod， 则为新版本(new)。
 ~~~
 
 ### 4.生成docker镜像
