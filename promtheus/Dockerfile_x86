@@ -1,6 +1,4 @@
-FROM openeuler/openeuler
-
-MAINTAINER TomNewChao<tom_toworld@163.com>
+FROM openeuler/openeuler:22.03
 
 RUN yum install -y git curl wget tar
 RUN cd /root && wget https://github.com/prometheus/prometheus/releases/download/v2.37.1/prometheus-2.37.1.linux-amd64.tar.gz
